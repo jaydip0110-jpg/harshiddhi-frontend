@@ -7,34 +7,22 @@ import toast from "react-hot-toast";
 
 const STEPS = ["Shipping", "Payment", "Confirm"];
 
-// Token get from all places
 const getToken = () => {
   try {
     const t1 = localStorage.getItem("userToken");
     if (t1) return t1;
-
     const userInfo = localStorage.getItem("userInfo");
-    if (userInfo) {
-      const t2 = JSON.parse(userInfo)?.token;
-      if (t2) return t2;
-    }
-
+    if (userInfo) return JSON.parse(userInfo)?.token;
     const persisted = localStorage.getItem("harshiddhi");
-    if (persisted) {
-      const t3 = JSON.parse(persisted)?.auth?.user?.token;
-      if (t3) return t3;
-    }
+    if (persisted) return JSON.parse(persisted)?.auth?.user?.token;
   } catch (_) {}
   return null;
 };
 
-// Dynamic API URL
-const getBaseURL = () => {
-  if (import.meta.env.MODE === "production") {
-    return "https://harshiddhi-backend.onrender.com/api";
-  }
-  return "http://localhost:5000/api";
-};
+const BASE =
+  import.meta.env.MODE === "production"
+    ? "https://harshiddhi-backend.onrender.com/api"
+    : "http://localhost:5000/api";
 
 export default function CheckoutPage() {
   const dispatch = useDispatch();
@@ -45,7 +33,7 @@ export default function CheckoutPage() {
 
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("COD");
+  const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [shipping, setShipping] = useState({
     name: user?.name || "",
     phone: "",
@@ -68,65 +56,152 @@ export default function CheckoutPage() {
     setStep(1);
   };
 
-  const handlePlaceOrder = async () => {
+  // ── Create Order in DB ──
+  const createDBOrder = async (paymentMethod, paymentResult = null) => {
+    const token = getToken();
+    const orderData = {
+      items: items.map((i) => ({
+        product: i._id,
+        name: i.name,
+        image: i.images?.[0] || "",
+        price: i.price,
+        qty: i.qty,
+      })),
+      shippingAddress: shipping,
+      paymentMethod,
+      itemsPrice: subtotal,
+      shippingPrice: shippingCost,
+      taxPrice: tax,
+      totalPrice: total,
+    };
+
+    const res = await fetch(`${BASE}/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(orderData),
+    });
+    return await res.json();
+  };
+
+  // ── COD Order ──
+  const handleCODOrder = async () => {
     setLoading(true);
-
     try {
-      // Token get
       const token = getToken();
-      console.log("Token:", token ? "Found ✅" : "Not found ❌");
-
       if (!token) {
-        toast.error("Session expired! Please login again");
+        toast.error("Please login again");
         navigate("/login");
         return;
       }
 
-      const baseURL = getBaseURL();
+      const order = await createDBOrder("COD");
+      if (!order._id) throw new Error(order.message || "Order failed");
 
-      const orderData = {
-        items: items.map((i) => ({
-          product: i._id,
-          name: i.name,
-          image: i.images?.[0] || "",
-          price: i.price,
-          qty: i.qty,
-        })),
-        shippingAddress: shipping,
-        paymentMethod,
-        itemsPrice: subtotal,
-        shippingPrice: shippingCost,
-        taxPrice: tax,
-        totalPrice: total,
-      };
+      dispatch(clearCart());
+      toast.success("Order placed! 🎉");
+      navigate("/order/success", { state: { orderId: order._id } });
+    } catch (err) {
+      toast.error(err.message || "Order failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      console.log("Placing order to:", `${baseURL}/orders`);
-      console.log("Order data:", orderData);
+  // ── UPI / Online Payment ──
+  const handleOnlinePayment = async () => {
+    setLoading(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        toast.error("Please login again");
+        navigate("/login");
+        return;
+      }
 
-      const response = await fetch(`${baseURL}/orders`, {
+      // 1. Create order in DB
+      const dbOrder = await createDBOrder(paymentMethod);
+      if (!dbOrder._id) throw new Error(dbOrder.message || "Order failed");
+
+      // 2. Create Razorpay payment order
+      const payRes = await fetch(`${BASE}/payment/create-order`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(orderData),
+        body: JSON.stringify({ amount: total }),
       });
+      const payData = await payRes.json();
 
-      const data = await response.json();
-      console.log("Order response:", data);
+      // 3. Open Razorpay Checkout
+      const options = {
+        key: payData.keyId,
+        amount: payData.amount,
+        currency: payData.currency,
+        name: "Harshiddhi Saari & Dresses",
+        description: "Purchase",
+        order_id: payData.orderId,
+        prefill: {
+          name: user?.name || shipping.name,
+          email: user?.email || "",
+          contact: shipping.phone,
+        },
+        theme: { color: "#C2185B" },
 
-      if (!response.ok) {
-        throw new Error(data.message || `Order failed: ${response.status}`);
-      }
+        handler: async (response) => {
+          try {
+            // 4. Verify payment
+            const verifyRes = await fetch(`${BASE}/payment/verify`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                orderId: dbOrder._id,
+              }),
+            });
+            const verifyData = await verifyRes.json();
 
-      dispatch(clearCart());
-      toast.success("Order placed successfully! 🎉");
-      navigate("/order/success", { state: { orderId: data._id } });
+            if (verifyData.success) {
+              dispatch(clearCart());
+              toast.success("Payment successful! 🎉");
+              navigate("/order/success", { state: { orderId: dbOrder._id } });
+            } else {
+              toast.error("Payment verification failed");
+            }
+          } catch (err) {
+            toast.error("Payment verification failed");
+          }
+        },
+
+        modal: {
+          ondismiss: () => {
+            toast.error("Payment cancelled");
+            setLoading(false);
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
     } catch (err) {
-      console.error("Order error:", err);
-      toast.error(err.message || "Failed to place order. Please try again.");
-    } finally {
+      toast.error(err.message || "Payment failed");
       setLoading(false);
+    }
+  };
+
+  const handlePlaceOrder = () => {
+    if (paymentMethod === "COD") {
+      handleCODOrder();
+    } else {
+      handleOnlinePayment();
     }
   };
 
@@ -141,28 +216,19 @@ export default function CheckoutPage() {
         {STEPS.map((s, i) => (
           <div key={s} className="flex items-center">
             <div
-              className={`flex items-center justify-center w-9 h-9 rounded-full
-                            text-sm font-bold transition-all
-              ${
-                i < step
-                  ? "bg-green-500 text-white"
-                  : i === step
-                    ? "bg-primary text-white"
-                    : "bg-gray-200 text-gray-500"
-              }`}
+              className={`flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold transition-all
+              ${i < step ? "bg-green-500 text-white" : i === step ? "bg-primary text-white" : "bg-gray-200 text-gray-500"}`}
             >
               {i < step ? <FiCheck size={16} /> : i + 1}
             </div>
             <span
-              className={`ml-2 text-sm font-medium hidden sm:block
-              ${i === step ? "text-primary" : "text-gray-400"}`}
+              className={`ml-2 text-sm font-medium hidden sm:block ${i === step ? "text-primary" : "text-gray-400"}`}
             >
               {s}
             </span>
             {i < STEPS.length - 1 && (
               <div
-                className={`mx-3 h-0.5 w-12 sm:w-20 transition-all
-                ${i < step ? "bg-green-500" : "bg-gray-200"}`}
+                className={`mx-3 h-0.5 w-12 sm:w-20 ${i < step ? "bg-green-500" : "bg-gray-200"}`}
               />
             )}
           </div>
@@ -197,7 +263,7 @@ export default function CheckoutPage() {
                 </div>
                 <div>
                   <label className="text-sm text-gray-600 mb-1 block">
-                    Phone Number *
+                    Phone *
                   </label>
                   <input
                     value={shipping.phone}
@@ -281,34 +347,31 @@ export default function CheckoutPage() {
               <div className="space-y-3">
                 {[
                   {
-                    value: "COD",
-                    label: "Cash on Delivery",
-                    desc: "Pay when your order arrives",
-                  },
-                  {
                     value: "UPI",
-                    label: "UPI Payment",
-                    desc: "GPay, PhonePe, Paytm, etc.",
+                    label: "💳 UPI Payment",
+                    desc: "GPay, PhonePe, Paytm — Direct to Admin Account",
+                    recommended: true,
                   },
                   {
                     value: "Card",
-                    label: "Debit / Credit Card",
+                    label: "🏦 Debit / Credit Card",
                     desc: "All major cards accepted",
                   },
                   {
                     value: "NetBanking",
-                    label: "Net Banking",
+                    label: "🏛️ Net Banking",
                     desc: "All major banks",
+                  },
+                  {
+                    value: "COD",
+                    label: "💵 Cash on Delivery",
+                    desc: "Pay when order arrives",
                   },
                 ].map((opt) => (
                   <label
                     key={opt.value}
                     className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all
-                      ${
-                        paymentMethod === opt.value
-                          ? "border-primary bg-rose/50"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
+                      ${paymentMethod === opt.value ? "border-primary bg-rose/50" : "border-gray-200 hover:border-gray-300"}`}
                   >
                     <input
                       type="radio"
@@ -318,13 +381,34 @@ export default function CheckoutPage() {
                       onChange={() => setPaymentMethod(opt.value)}
                       className="accent-primary w-4 h-4"
                     />
-                    <div>
-                      <p className="font-semibold text-sm">{opt.label}</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-sm">{opt.label}</p>
+                        {opt.recommended && (
+                          <span className="badge bg-green-100 text-green-700 text-xs">
+                            Recommended
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500">{opt.desc}</p>
                     </div>
                   </label>
                 ))}
               </div>
+
+              {/* UPI Info */}
+              {paymentMethod !== "COD" && (
+                <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                  <p className="text-sm text-green-700 font-semibold mb-1">
+                    💰 Online Payment — Direct to Admin Account
+                  </p>
+                  <p className="text-xs text-green-600">
+                    Payment સીધું Admin ના account માં જાય છે. GPay, PhonePe,
+                    Paytm, UPI, Card બધા accept થાય છે.
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setStep(0)}
@@ -348,8 +432,6 @@ export default function CheckoutPage() {
               <h2 className="font-display text-xl font-bold mb-5">
                 Order Confirmation
               </h2>
-
-              {/* Items */}
               <div className="space-y-3 mb-6">
                 {items.map((item) => (
                   <div key={item._id} className="flex gap-3 items-center">
@@ -369,8 +451,7 @@ export default function CheckoutPage() {
                 ))}
               </div>
 
-              {/* Shipping Summary */}
-              <div className="bg-cream rounded-xl p-4 text-sm space-y-1.5 mb-6">
+              <div className="bg-cream rounded-xl p-4 text-sm space-y-1.5 mb-4">
                 <p>
                   <strong>Name:</strong> {shipping.name}
                 </p>
@@ -382,12 +463,32 @@ export default function CheckoutPage() {
                   {shipping.pincode}
                 </p>
                 <p>
-                  <strong>State:</strong> {shipping.state}
-                </p>
-                <p>
                   <strong>Payment:</strong> {paymentMethod}
                 </p>
               </div>
+
+              {/* Payment Method Info */}
+              {paymentMethod !== "COD" ? (
+                <div className="p-4 bg-blue-50 rounded-xl border border-blue-200 mb-4">
+                  <p className="text-sm text-blue-700 font-semibold">
+                    💳 Online Payment — ₹{total.toLocaleString("en-IN")}
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Place Order દબાવો — Razorpay payment window ખુલશે. GPay /
+                    PhonePe / Paytm / Card use કરી શકો. Payment સફળ થાય તો order
+                    confirm થશે.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 mb-4">
+                  <p className="text-sm text-amber-700 font-semibold">
+                    💵 Cash on Delivery — ₹{total.toLocaleString("en-IN")}
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1">
+                    Delivery સમયે cash આપો.
+                  </p>
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button
@@ -403,14 +504,13 @@ export default function CheckoutPage() {
                 >
                   {loading ? (
                     <>
-                      <div
-                        className="w-4 h-4 border-2 border-white border-t-transparent
-                                      rounded-full animate-spin"
-                      />
-                      Placing Order...
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{" "}
+                      Processing...
                     </>
-                  ) : (
+                  ) : paymentMethod === "COD" ? (
                     "🌸 Place Order"
+                  ) : (
+                    "💳 Pay Now"
                   )}
                 </button>
               </div>
