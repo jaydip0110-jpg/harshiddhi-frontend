@@ -9,12 +9,24 @@ const STEPS = ["Shipping", "Payment", "Confirm"];
 
 const getToken = () => {
   try {
+    // 1. Direct token
     const t1 = localStorage.getItem("userToken");
-    if (t1) return t1;
+    if (t1 && t1 !== "undefined") return t1;
+
+    // 2. userInfo
     const userInfo = localStorage.getItem("userInfo");
-    if (userInfo) return JSON.parse(userInfo)?.token;
+    if (userInfo) {
+      const parsed = JSON.parse(userInfo);
+      if (parsed?.token) return parsed.token;
+    }
+
+    // 3. Redux persist
     const persisted = localStorage.getItem("harshiddhi");
-    if (persisted) return JSON.parse(persisted)?.auth?.user?.token;
+    if (persisted) {
+      const state = JSON.parse(persisted);
+      const t3 = state?.auth?.user?.token;
+      if (t3) return t3;
+    }
   } catch (_) {}
   return null;
 };
@@ -57,8 +69,15 @@ export default function CheckoutPage() {
   };
 
   // ── Create Order in DB ──
-  const createDBOrder = async (paymentMethod, paymentResult = null) => {
+  const createDBOrder = async (paymentMethod) => {
     const token = getToken();
+
+    console.log("Token:", token ? "✅ Found" : "❌ Not found");
+
+    if (!token) {
+      throw new Error("Session expired! Please login again");
+    }
+
     const orderData = {
       items: items.map((i) => ({
         product: i._id,
@@ -75,6 +94,8 @@ export default function CheckoutPage() {
       totalPrice: total,
     };
 
+    console.log("Creating order at:", `${BASE}/orders`);
+
     const res = await fetch(`${BASE}/orders`, {
       method: "POST",
       headers: {
@@ -83,7 +104,15 @@ export default function CheckoutPage() {
       },
       body: JSON.stringify(orderData),
     });
-    return await res.json();
+
+    const data = await res.json();
+    console.log("Order response:", data);
+
+    if (!res.ok) {
+      throw new Error(data.message || "Order creation failed");
+    }
+
+    return data;
   };
 
   // ── COD Order ──
@@ -92,7 +121,7 @@ export default function CheckoutPage() {
     try {
       const token = getToken();
       if (!token) {
-        toast.error("Please login again");
+        toast.error("Session expired! Please login again");
         navigate("/login");
         return;
       }
@@ -116,14 +145,14 @@ export default function CheckoutPage() {
     try {
       const token = getToken();
       if (!token) {
-        toast.error("Please login again");
+        toast.error("Session expired! Please login again");
         navigate("/login");
         return;
       }
 
       // 1. Create order in DB
       const dbOrder = await createDBOrder(paymentMethod);
-      if (!dbOrder._id) throw new Error(dbOrder.message || "Order failed");
+      if (!dbOrder._id) throw new Error("Order creation failed");
 
       // 2. Create Razorpay payment order
       const payRes = await fetch(`${BASE}/payment/create-order`, {
@@ -134,9 +163,13 @@ export default function CheckoutPage() {
         },
         body: JSON.stringify({ amount: total }),
       });
-      const payData = await payRes.json();
 
-      // 3. Open Razorpay Checkout
+      const payData = await payRes.json();
+      console.log("Razorpay order:", payData);
+
+      if (!payRes.ok) throw new Error(payData.message || "Payment init failed");
+
+      // 3. Open Razorpay
       const options = {
         key: payData.keyId,
         amount: payData.amount,
@@ -153,7 +186,6 @@ export default function CheckoutPage() {
 
         handler: async (response) => {
           try {
-            // 4. Verify payment
             const verifyRes = await fetch(`${BASE}/payment/verify`, {
               method: "POST",
               headers: {
@@ -167,6 +199,7 @@ export default function CheckoutPage() {
                 orderId: dbOrder._id,
               }),
             });
+
             const verifyData = await verifyRes.json();
 
             if (verifyData.success) {
@@ -178,6 +211,8 @@ export default function CheckoutPage() {
             }
           } catch (err) {
             toast.error("Payment verification failed");
+          } finally {
+            setLoading(false);
           }
         },
 
@@ -192,6 +227,7 @@ export default function CheckoutPage() {
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (err) {
+      console.error("Payment error:", err);
       toast.error(err.message || "Payment failed");
       setLoading(false);
     }

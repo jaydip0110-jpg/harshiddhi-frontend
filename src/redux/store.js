@@ -3,22 +3,24 @@ import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, 
 import storage from 'redux-persist/lib/storage';
 import { combineReducers } from '@reduxjs/toolkit';
 
-import authReducer    from './slices/authSlice';
-import cartReducer    from './slices/cartSlice';
-import productReducer from './slices/productSlice';
-import orderReducer   from './slices/orderSlice';
+import authReducer     from './slices/authSlice';
+import cartReducer     from './slices/cartSlice';
+import productReducer  from './slices/productSlice';
+import orderReducer    from './slices/orderSlice';
+import wishlistReducer from './slices/wishlistSlice';
 
 const persistConfig = {
-  key: 'harshiddhi',
+  key:       'harshiddhi',
   storage,
-  whitelist: ['auth', 'cart'], // Only persist auth and cart
+  whitelist: ['auth', 'cart', 'wishlist'],
 };
 
 const rootReducer = combineReducers({
-  auth:    authReducer,
-  cart:    cartReducer,
-  product: productReducer,
-  order:   orderReducer,
+  auth:     authReducer,
+  cart:     cartReducer,
+  product:  productReducer,
+  order:    orderReducer,
+  wishlist: wishlistReducer,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -27,7 +29,9 @@ export const store = configureStore({
   reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: { ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER] },
+      serializableCheck: {
+        ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+      },
     }),
 });
 

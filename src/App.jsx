@@ -17,6 +17,7 @@ import AdminProducts from "./pages/admin/AdminProducts";
 import AdminOrders from "./pages/admin/AdminOrders";
 import ProductForm from "./pages/admin/ProductForm";
 import NotFoundPage from "./pages/NotFoundPage";
+import WishlistPage from "./pages/WishlistPage";
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="products" element={<ProductsPage />} />
           <Route path="products/:id" element={<ProductDetail />} />
           <Route path="cart" element={<CartPage />} />
+          <Route path="wishlist" element={<WishlistPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
 

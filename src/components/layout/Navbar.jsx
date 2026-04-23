@@ -10,6 +10,7 @@ import {
   FiLogOut,
   FiPackage,
   FiSettings,
+  FiHeart,
 } from "react-icons/fi";
 import { logout } from "../../redux/slices/authSlice";
 import { selectCartCount } from "../../redux/slices/cartSlice";
@@ -29,6 +30,7 @@ export default function Navbar() {
   const location = useLocation();
   const { user } = useSelector((s) => s.auth);
   const cartCount = useSelector(selectCartCount);
+  const wishlistCount = useSelector((s) => s.wishlist.items.length);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -111,6 +113,21 @@ export default function Navbar() {
 
         {/* Actions */}
         <div className="flex items-center gap-3">
+          {/* Wishlist */}
+          <Link
+            to="/wishlist"
+            className="relative p-2 hover:text-primary transition-colors"
+          >
+            <FiHeart size={22} />
+            {wishlistCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 bg-primary text-white text-xs
+                     w-5 h-5 rounded-full flex items-center justify-center font-bold"
+              >
+                {wishlistCount}
+              </span>
+            )}
+          </Link>
           {/* Cart */}
           <Link
             to="/cart"
