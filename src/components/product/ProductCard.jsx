@@ -7,7 +7,7 @@ import { addToWishlist } from "../../redux/slices/wishlistSlice";
 
 export default function ProductCard({ product }) {
   const dispatch = useDispatch();
-  const wishlistItems = useSelector((s) => s.wishlist.items);
+  const wishlistItems = useSelector((s) => s.wishlist?.items || []);
   const isWishlisted = wishlistItems.some((i) => i._id === product._id);
 
   const discountedPrice = product.discount
@@ -16,7 +16,7 @@ export default function ProductCard({ product }) {
 
   return (
     <div className="card group overflow-hidden">
-      {/* Image */}
+      {/* Image — No badges on image */}
       <Link
         to={`/products/${product._id}`}
         className="block relative overflow-hidden aspect-[3/4]"
@@ -31,21 +31,16 @@ export default function ProductCard({ product }) {
           loading="lazy"
         />
 
-        {/* Badges */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
-          {product.discount > 0 && (
-            <span className="badge bg-primary text-white text-xs px-2 py-0.5 rounded-full">
-              {product.discount}% OFF
-            </span>
-          )}
-          {product.stock === 0 && (
+        {/* Only Out of Stock badge on image */}
+        {product.stock === 0 && (
+          <div className="absolute top-2 left-2">
             <span className="badge bg-gray-700 text-white text-xs px-2 py-0.5 rounded-full">
               Out of Stock
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Wishlist Heart Button */}
+        {/* Wishlist Heart */}
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -97,18 +92,28 @@ export default function ProductCard({ product }) {
           </div>
         )}
 
-        {/* Price — Discounted + Original */}
+        {/* Price Row */}
         <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Discounted Price */}
-            <span className="font-bold text-gray-900 text-base">
-              ₹{discountedPrice.toLocaleString("en-IN")}
-            </span>
+          <div className="flex flex-col">
+            {/* Price + Original + Discount */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Discounted / Main Price */}
+              <span className="font-bold text-gray-900 text-base">
+                ₹{discountedPrice.toLocaleString("en-IN")}
+              </span>
 
-            {/* Original Price in () */}
+              {/* Original Price in brackets */}
+              {product.discount > 0 && (
+                <span className="text-xs text-gray-400 line-through">
+                  (₹{product.price.toLocaleString("en-IN")})
+                </span>
+              )}
+            </div>
+
+            {/* Discount % — નીચે show */}
             {product.discount > 0 && (
-              <span className="text-xs text-gray-400">
-                (₹{product.price.toLocaleString("en-IN")})
+              <span className="text-xs text-green-600 font-semibold mt-0.5">
+                {product.discount}% off
               </span>
             )}
           </div>
