@@ -12,13 +12,13 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const { user, loading } = useSelector((s) => s.auth);
 
-  const [loginType, setLoginType] = useState("phone"); // 'phone' or 'email'
+  const [loginType, setLoginType] = useState("email");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [agreed, setAgreed] = useState(true);
-  const [step, setStep] = useState(1); // 1=enter phone/email, 2=enter password
+  const [step, setStep] = useState(1);
 
   const redirect = searchParams.get("redirect") || "/";
 
@@ -26,24 +26,43 @@ export default function LoginPage() {
     if (user) navigate(redirect, { replace: true });
   }, [user]);
 
+  // Step 1 — Continue button
+  const validateEmail = (email) => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailRegex.test(email);
+  };
+
   const handleContinue = (e) => {
     e.preventDefault();
-    if (loginType === "phone" && !phone)
-      return toast.error("Please enter phone number");
-    if (loginType === "email" && !email)
-      return toast.error("Please enter email");
+
+    if (loginType === "phone") {
+      if (phone.length !== 10) {
+        return toast.error("Valid 10-digit phone number નાખો");
+      }
+    } else {
+      if (!validateEmail(email)) {
+        return toast.error("Valid email નાખો — name123@gmail.com format");
+      }
+    }
+
     if (!agreed) return toast.error("Please agree to Terms of Use");
     setStep(2);
   };
 
+  // Step 2 — Login button
   const handleLogin = (e) => {
     e.preventDefault();
-    const identifier = loginType === "phone" ? `${phone}@phone.com` : email;
-    dispatch(login({ email: identifier, password }));
-  };
+    if (!password) return toast.error("Password નાખો");
 
-  const handleGoogleLogin = () => {
-    toast("Google login coming soon! 🌸", { icon: "🔜" });
+    // Email format — user123@gmail.com જેવો format
+    let loginEmail = email;
+
+    if (loginType === "phone") {
+      // Phone number થી login — backend માં phone field check કરે
+      loginEmail = `${phone}@harshiddhi.com`;
+    }
+
+    dispatch(login({ email: loginEmail, password }));
   };
 
   return (
@@ -55,50 +74,56 @@ export default function LoginPage() {
     >
       <div className="w-full max-w-md">
         {/* Promo Banner */}
-        <div className="bg-gradient-to-r from-primary to-pink-400 rounded-2xl p-4 mb-6 text-white relative overflow-hidden">
-          <div
-            className="absolute right-0 top-0 bottom-0 w-24 opacity-20"
-            style={{
-              background: "radial-gradient(circle, white 0%, transparent 70%)",
-            }}
-          />
+        <div
+          className="bg-gradient-to-r from-primary to-pink-400 rounded-2xl p-4 mb-6
+                        text-white relative overflow-hidden"
+        >
           <p className="text-xs font-semibold uppercase tracking-widest opacity-80 mb-1">
             Special Offer
           </p>
-          <p className="font-display text-2xl font-bold leading-tight">
-            GET 20% OFF
-          </p>
+          <p className="font-display text-2xl font-bold">GET 20% OFF</p>
           <p className="text-sm opacity-90 mt-1">On your first order!</p>
-          <div className="mt-3 inline-flex items-center gap-2 bg-white/20 rounded-lg px-3 py-1.5">
+          <div className="mt-3 inline-flex bg-white/20 rounded-lg px-3 py-1.5">
             <span className="text-xs font-bold tracking-widest">
               CODE: HARSHI20
             </span>
           </div>
         </div>
 
-        {/* Card */}
         <div className="bg-white rounded-3xl shadow-xl p-6">
-          {/* Tab — Phone / Email */}
-          <div className="flex bg-gray-100 rounded-2xl p-1 mb-6">
-            <button
-              onClick={() => {
-                setLoginType("phone");
-                setStep(1);
-              }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all
-                ${loginType === "phone" ? "bg-white shadow text-primary" : "text-gray-500"}`}
-            >
-              <FiPhone size={15} /> Phone
-            </button>
+          {/* Tab — Email / Phone */}
+          <div className="flex bg-gray-100 rounded-2xl p-1 mb-5">
             <button
               onClick={() => {
                 setLoginType("email");
                 setStep(1);
+                setPhone("");
               }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all
-                ${loginType === "email" ? "bg-white shadow text-primary" : "text-gray-500"}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5
+                          rounded-xl text-sm font-semibold transition-all
+                ${
+                  loginType === "email"
+                    ? "bg-white shadow text-primary"
+                    : "text-gray-500"
+                }`}
             >
               <FiMail size={15} /> Email
+            </button>
+            <button
+              onClick={() => {
+                setLoginType("phone");
+                setStep(1);
+                setEmail("");
+              }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5
+                          rounded-xl text-sm font-semibold transition-all
+                ${
+                  loginType === "phone"
+                    ? "bg-white shadow text-primary"
+                    : "text-gray-500"
+                }`}
+            >
+              <FiPhone size={15} /> Phone
             </button>
           </div>
 
@@ -110,13 +135,28 @@ export default function LoginPage() {
             Welcome to Harshiddhi Saari & Dresses 🌸
           </p>
 
-          {/* Step 1 — Phone or Email */}
+          {/* ── Step 1 — Enter Email or Phone ── */}
           {step === 1 && (
             <form onSubmit={handleContinue} className="space-y-4">
-              {loginType === "phone" ? (
+              {loginType === "email" ? (
+                <div className="relative">
+                  <FiMail
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    size={16}
+                  />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="user123@gmail.com"
+                    className="input-field pl-11 py-3.5 rounded-2xl"
+                    required
+                  />
+                </div>
+              ) : (
                 <div
                   className="flex border border-gray-300 rounded-2xl overflow-hidden
-                               focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent"
+                               focus-within:ring-2 focus-within:ring-primary"
                 >
                   <div className="flex items-center px-4 bg-gray-50 border-r border-gray-300">
                     <span className="text-gray-600 font-semibold text-sm">
@@ -129,21 +169,12 @@ export default function LoginPage() {
                     onChange={(e) =>
                       setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
                     }
-                    placeholder="Enter mobile number"
-                    className="flex-1 px-4 py-3.5 text-sm outline-none bg-white"
+                    placeholder="10-digit mobile number"
+                    className="flex-1 px-4 py-3.5 text-sm outline-none"
                     maxLength={10}
                     required
                   />
                 </div>
-              ) : (
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter email address"
-                  className="input-field py-3.5 rounded-2xl"
-                  required
-                />
               )}
 
               {/* Terms */}
@@ -170,25 +201,28 @@ export default function LoginPage() {
               <button
                 type="submit"
                 className="w-full py-4 bg-primary text-white rounded-2xl font-bold
-                                 text-sm tracking-widest uppercase hover:bg-primary-dark
-                                 transition-all shadow-lg shadow-primary/30"
+                           text-sm tracking-widest uppercase hover:bg-primary-dark
+                           transition-all shadow-lg shadow-primary/30"
               >
                 CONTINUE
               </button>
             </form>
           )}
 
-          {/* Step 2 — Password */}
+          {/* ── Step 2 — Enter Password ── */}
           {step === 2 && (
             <form onSubmit={handleLogin} className="space-y-4">
-              {/* Show entered phone/email */}
+              {/* Show entered value */}
               <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
                 <span className="text-sm font-semibold text-gray-700">
                   {loginType === "phone" ? `+91 ${phone}` : email}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => {
+                    setStep(1);
+                    setPassword("");
+                  }}
                   className="text-primary text-xs font-semibold hover:underline"
                 >
                   Change
@@ -197,14 +231,21 @@ export default function LoginPage() {
 
               {/* Password */}
               <div className="relative">
+                <FiLock
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                  size={16}
+                />
                 <input
                   type={showPwd ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
-                  className="input-field py-3.5 rounded-2xl pr-12"
+                  className="input-field pl-11 pr-12 py-3.5 rounded-2xl"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1 ml-1">
+                  Password format: Name@123
+                </p>
                 <button
                   type="button"
                   onClick={() => setShowPwd(!showPwd)}
@@ -233,9 +274,11 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-gray-200" />
           </div>
 
-          {/* Google Login */}
+          {/* Google */}
           <button
-            onClick={handleGoogleLogin}
+            onClick={() =>
+              toast("Google login coming soon! 🌸", { icon: "🔜" })
+            }
             className="w-full flex items-center justify-center gap-3 py-3.5
                        border-2 border-gray-200 rounded-2xl hover:border-primary
                        hover:bg-rose/30 transition-all font-semibold text-sm text-gray-700"
@@ -244,7 +287,6 @@ export default function LoginPage() {
             Continue with Google
           </button>
 
-          {/* Register Link */}
           <p className="text-center text-sm text-gray-500 mt-5">
             New here?{" "}
             <Link
@@ -257,7 +299,7 @@ export default function LoginPage() {
 
           {/* Demo hint */}
           <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-700">
-            <p className="font-semibold mb-0.5">Demo Login:</p>
+            <p className="font-semibold mb-1">Demo Login:</p>
             <p>Email: admin@harshiddhi.com</p>
             <p>Password: admin123</p>
           </div>

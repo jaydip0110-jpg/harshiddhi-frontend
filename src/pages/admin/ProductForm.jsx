@@ -13,6 +13,19 @@ const CATEGORIES = [
   "Dupattas",
 ];
 
+const ALL_SIZES = [
+  "Free Size",
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "XXXL",
+  "4XL",
+  "5XL",
+];
+
 const EMPTY = {
   name: "",
   description: "",
@@ -24,6 +37,7 @@ const EMPTY = {
   discount: 0,
   featured: false,
   images: [],
+  sizes: [], // ← Add this
 };
 
 // ── API URL — Dev અને Production ──
@@ -86,6 +100,7 @@ export default function ProductForm() {
         discount: data.discount || 0,
         featured: data.featured || false,
         images: data.images || [],
+        sizes: data.sizes || [],
       });
     } catch (err) {
       toast.error("Failed to load product");
@@ -95,6 +110,16 @@ export default function ProductForm() {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((p) => ({ ...p, [name]: type === "checkbox" ? checked : value }));
+  };
+
+  // Size select/deselect toggle
+  const toggleSize = (size) => {
+    setForm((p) => ({
+      ...p,
+      sizes: p.sizes.includes(size)
+        ? p.sizes.filter((s) => s !== size)
+        : [...p.sizes, size],
+    }));
   };
 
   // ── Image Upload ──
@@ -352,6 +377,36 @@ export default function ProductForm() {
             </div>
           </div>
 
+          {/* ── Sizes ── */}
+          <div>
+            <label className="text-sm text-gray-600 mb-2 block font-medium">
+              Available Sizes
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {ALL_SIZES.map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => toggleSize(size)}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all
+          ${
+            form.sizes.includes(size)
+              ? "bg-primary text-white border-primary shadow-md"
+              : "bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary"
+          }`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+            {form.sizes.length > 0 && (
+              <p className="text-xs text-green-600 mt-2 font-medium">
+                ✅ Selected: {form.sizes.join(", ")}
+              </p>
+            )}
+          </div>
+
+          
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"

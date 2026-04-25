@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import toast from 'react-hot-toast';
 
-// ── API URL — Dev અને Production બંને માટે ──
+// ── API URL ──
 const PROD_URL = 'https://harshiddhi-backend.onrender.com/api';
 const DEV_URL  = 'http://localhost:5000/api';
 const API_URL  = import.meta.env.MODE === 'production' ? PROD_URL : DEV_URL;
@@ -18,7 +18,7 @@ const saveToken = (data) => {
 export const getToken = () => {
   try {
     const t1 = localStorage.getItem('userToken');
-    if (t1) return t1;
+    if (t1 && t1 !== 'undefined') return t1;
 
     const userInfo = localStorage.getItem('userInfo');
     if (userInfo) {
@@ -35,7 +35,7 @@ export const getToken = () => {
   return null;
 };
 
-// ── Initial User from Storage ──
+// ── Get User from Storage ──
 const getUserFromStorage = () => {
   try {
     const userInfo = localStorage.getItem('userInfo');
@@ -74,7 +74,10 @@ export const login = createAsyncThunk(
       const res  = await fetch(`${API_URL}/users/login`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(credentials),
+        body:    JSON.stringify({
+          email:    credentials.email.toLowerCase().trim(),
+          password: credentials.password,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Login failed');
@@ -121,6 +124,7 @@ const authSlice = createSlice({
     error:   null,
   },
   reducers: {
+    // ✅ logout export
     logout(state) {
       state.user    = null;
       state.error   = null;
@@ -129,12 +133,14 @@ const authSlice = createSlice({
       localStorage.removeItem('userInfo');
       toast.success('Logged out successfully');
     },
+    // ✅ clearError export
     clearError(state) {
       state.error = null;
     },
   },
   extraReducers: (builder) => {
     builder
+      // Register
       .addCase(register.pending,   (s) => { s.loading = true;  s.error = null; })
       .addCase(register.fulfilled, (s, { payload }) => {
         s.loading = false;
@@ -145,6 +151,7 @@ const authSlice = createSlice({
         s.loading = false;
         s.error   = payload;
       })
+      // Login
       .addCase(login.pending,   (s) => { s.loading = true;  s.error = null; })
       .addCase(login.fulfilled, (s, { payload }) => {
         s.loading = false;
@@ -155,6 +162,7 @@ const authSlice = createSlice({
         s.loading = false;
         s.error   = payload;
       })
+      // Update Profile
       .addCase(updateProfile.fulfilled, (s, { payload }) => {
         s.user = { ...s.user, ...payload };
         localStorage.setItem('userInfo', JSON.stringify({ ...s.user, ...payload }));
@@ -162,5 +170,8 @@ const authSlice = createSlice({
   },
 });
 
+// ✅ Named exports — logout અને clearError
 export const { logout, clearError } = authSlice.actions;
+
+// ✅ Default export
 export default authSlice.reducer;
