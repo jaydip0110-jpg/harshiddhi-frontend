@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchFeatured } from "../redux/slices/productSlice";
+import { fetchFeatured, fetchProducts } from "../redux/slices/productSlice";
 import ProductCard from "../components/product/ProductCard";
 import { ProductCardSkeleton } from "../components/common/Skeleton";
 import {
@@ -35,7 +35,7 @@ const CATEGORIES = [
     name: "Suits",
     emoji: "👘",
     color: "from-teal-100 to-green-200",
-    img: "https://images.unsplash.com/photo-1539008835657-9e8e9680c956?w=300",
+    img: "https://images.unsplash.com/photo-1594938298603-c8148c4b4468?w=300",
   },
   {
     name: "Kurtis",
@@ -47,7 +47,7 @@ const CATEGORIES = [
     name: "Dupattas",
     emoji: "🎀",
     color: "from-indigo-100 to-purple-200",
-    img: "https://images.unsplash.com/photo-1605763240000-7e93b172d754?w=300",
+    img: "https://images.unsplash.com/photo-1602614628304-2ae3d2b0a4ab?w=300",
   },
 ];
 
@@ -93,17 +93,27 @@ const TESTIMONIALS = [
 
 export default function HomePage() {
   const dispatch = useDispatch();
-  const { featured, loading } = useSelector((s) => s.product);
+  const {
+    featured,
+    list: allProducts,
+    loading,
+  } = useSelector((s) => s.product);
 
   useEffect(() => {
+    // Featured + Latest products fetch
     dispatch(fetchFeatured());
+    dispatch(fetchProducts({ limit: 8, page: 1 }));
   }, [dispatch]);
+
+  // Latest 4 products — newly added
+  const latestProducts = [...allProducts]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 4);
 
   return (
     <div className="page-enter">
       {/* ── Hero Banner ── */}
       <section className="relative min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-[#1a0a10] via-[#2d1018] to-[#1a0a10]">
-        {/* Background pattern */}
         <div
           className="absolute inset-0 opacity-10"
           style={{
@@ -111,13 +121,11 @@ export default function HomePage() {
               "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23D4AF37' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")",
           }}
         />
-
-        {/* Decorative images */}
         <div className="absolute right-0 top-0 h-full w-1/2 opacity-30 md:opacity-50">
           <img
             src="https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800"
             alt=""
-            className="w-full h-full object-cover object-center"
+            className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#1a0a10] to-transparent" />
         </div>
@@ -136,8 +144,7 @@ export default function HomePage() {
             </h1>
             <p className="text-gray-300 text-lg mb-8 font-body leading-relaxed animate-fade-in">
               Discover our curated collection of handcrafted sarees, bridal
-              lehengas, and designer dresses. From Kanjivaram silks to Banarasi
-              weaves — tradition meets contemporary style.
+              lehengas, and designer dresses.
             </p>
             <div className="flex flex-wrap gap-4 animate-slide-up">
               <Link
@@ -148,13 +155,12 @@ export default function HomePage() {
               </Link>
               <Link
                 to="/products?category=Sarees"
-                className="border-2 border-white/30 text-white px-8 py-3.5 rounded-full font-semibold hover:border-gold hover:text-gold transition-all duration-300"
+                className="border-2 border-white/30 text-white px-8 py-3.5 rounded-full font-semibold
+                               hover:border-gold hover:text-gold transition-all duration-300"
               >
                 Explore Sarees
               </Link>
             </div>
-
-            {/* Stats */}
             <div className="flex gap-8 mt-12 pt-8 border-t border-white/10">
               {[
                 ["500+", "Products"],
@@ -169,13 +175,6 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* Scroll hint */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 animate-float">
-          <div className="w-6 h-10 border-2 border-white/30 rounded-full flex items-start justify-center p-1">
-            <div className="w-1 h-3 bg-gold rounded-full animate-bounce" />
           </div>
         </div>
       </section>
@@ -211,13 +210,15 @@ export default function HomePage() {
               className="group flex flex-col items-center"
             >
               <div
-                className={`w-full aspect-square rounded-2xl bg-gradient-to-br ${cat.color} overflow-hidden
-                              shadow-md group-hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1`}
+                className={`w-full aspect-square rounded-2xl bg-gradient-to-br ${cat.color}
+                              overflow-hidden shadow-md group-hover:shadow-xl transition-all
+                              duration-300 group-hover:-translate-y-1`}
               >
                 <img
                   src={cat.img}
                   alt={cat.name}
-                  className="w-full h-full object-cover mix-blend-multiply opacity-70 group-hover:opacity-90 transition-all duration-300 group-hover:scale-105"
+                  className="w-full h-full object-cover mix-blend-multiply opacity-70
+                                group-hover:opacity-90 transition-all duration-300 group-hover:scale-105"
                 />
               </div>
               <span className="mt-2 font-semibold text-sm text-gray-700 group-hover:text-primary transition-colors">
@@ -228,7 +229,36 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Featured Products ── */}
+      {/* ── NEW Arrivals — Admin Add કરેલ Latest Products ── */}
+      {latestProducts.length > 0 && (
+        <section className="py-16 bg-white">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="section-title text-left mb-0">New Arrivals</h2>
+              <Link
+                to="/products?sort=newest"
+                className="text-primary text-sm font-semibold hover:underline flex items-center gap-1"
+              >
+                View All <FiArrowRight size={14} />
+              </Link>
+            </div>
+            <p className="text-gray-500 mb-8 text-sm">
+              Fresh picks just added to our collection
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+              {loading
+                ? Array.from({ length: 4 }).map((_, i) => (
+                    <ProductCardSkeleton key={i} />
+                  ))
+                : latestProducts.map((p) => (
+                    <ProductCard key={p._id} product={p} />
+                  ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Featured Collection ── */}
       <section className="py-16 bg-cream">
         <div className="max-w-7xl mx-auto px-4">
           <h2 className="section-title">Featured Collection</h2>
@@ -304,7 +334,10 @@ export default function HomePage() {
                   "{text}"
                 </p>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-gold flex items-center justify-center text-white font-bold text-sm">
+                  <div
+                    className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-gold
+                                  flex items-center justify-center text-white font-bold text-sm"
+                  >
                     {name[0]}
                   </div>
                   <div>

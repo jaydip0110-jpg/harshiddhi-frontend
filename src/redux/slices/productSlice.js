@@ -165,9 +165,14 @@ const productSlice = createSlice({
       })
 
       // Delete
-      .addCase(deleteProduct.fulfilled, (s, { payload }) => {
-        s.list = s.list.filter(p => p._id !== payload);
-      });
+     .addCase(deleteProduct.fulfilled, (s, { payload }) => {
+  // List માંથી remove
+  s.list     = s.list.filter(p => p._id !== payload);
+  // Featured માંથી પણ remove
+  s.featured = s.featured.filter(p => p._id !== payload);
+  // Current clear
+  if (s.current?._id === payload) s.current = null;
+});
   },
 });
 
