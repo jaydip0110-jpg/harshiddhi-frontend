@@ -1,44 +1,57 @@
-import { Link } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
-import { FiShoppingCart, FiStar, FiHeart } from "react-icons/fi";
-import { FaHeart } from "react-icons/fa";
-import { addToCart } from "../../redux/slices/cartSlice";
-import { addToWishlist } from "../../redux/slices/wishlistSlice";
+import { Link } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { FiShoppingCart, FiStar, FiHeart } from 'react-icons/fi';
+import { FaHeart } from 'react-icons/fa';
+import { addToCart } from '../../redux/slices/cartSlice';
+import { addToWishlist } from '../../redux/slices/wishlistSlice';
+
+// Check if product is new — 5 days ની અંદર add થયેલ
+const isNewProduct = (createdAt) => {
+  if (!createdAt) return false;
+  const created  = new Date(createdAt);
+  const now      = new Date();
+  const diffDays = (now - created) / (1000 * 60 * 60 * 24);
+  return diffDays <= 5; // 5 days ની અંદર NEW show થશે
+};
 
 export default function ProductCard({ product }) {
-  const dispatch = useDispatch();
-  const wishlistItems = useSelector((s) => s.wishlist?.items || []);
-  const isWishlisted = wishlistItems.some((i) => i._id === product._id);
+  const dispatch      = useDispatch();
+  const wishlistItems = useSelector(s => s.wishlist?.items || []);
+  const isWishlisted  = wishlistItems.some(i => i._id === product._id);
 
   const discountedPrice = product.discount
     ? Math.round(product.price * (1 - product.discount / 100))
     : product.price;
 
+  // NEW badge — admin add કર્યા પછી 5 days સુધી
+  const showNew = isNewProduct(product.createdAt);
+
   return (
     <div className="card group overflow-hidden">
-      {/* Image — No badges on image */}
-      <Link
-        to={`/products/${product._id}`}
-        className="block relative overflow-hidden aspect-[3/4]"
-      >
+      {/* Image */}
+      <Link to={`/products/${product._id}`} className="block relative overflow-hidden aspect-[3/4]">
         <img
-          src={
-            product.images?.[0] ||
-            "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=400"
-          }
+          src={product.images?.[0] || 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=400'}
           alt={product.name}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
         />
 
-        {/* Only Out of Stock badge on image */}
-        {product.stock === 0 && (
-          <div className="absolute top-2 left-2">
-            <span className="badge bg-gray-700 text-white text-xs px-2 py-0.5 rounded-full">
+        {/* ── Only ONE Badge — NEW or Out of Stock ── */}
+        <div className="absolute top-2 left-2">
+          {showNew && (
+            <span className="bg-green-500 text-white text-xs font-bold
+                             px-2.5 py-1 rounded-full shadow-md">
+              NEW
+            </span>
+          )}
+          {product.stock === 0 && (
+            <span className="bg-gray-700 text-white text-xs font-bold
+                             px-2.5 py-1 rounded-full">
               Out of Stock
             </span>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Wishlist Heart */}
         <button
@@ -50,19 +63,16 @@ export default function ProductCard({ product }) {
           className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-md
                      transition-all duration-300 hover:scale-110 z-10"
         >
-          {isWishlisted ? (
-            <FaHeart size={16} className="text-primary" />
-          ) : (
-            <FiHeart size={16} className="text-gray-400 hover:text-primary" />
-          )}
+          {isWishlisted
+            ? <FaHeart size={16} className="text-primary" />
+            : <FiHeart size={16} className="text-gray-400 hover:text-primary" />
+          }
         </button>
 
         {/* Quick View */}
-        <div
-          className="absolute bottom-0 left-0 right-0 bg-primary text-white text-center
-                        py-2.5 text-sm font-semibold translate-y-full
-                        group-hover:translate-y-0 transition-transform duration-300"
-        >
+        <div className="absolute bottom-0 left-0 right-0 bg-primary text-white
+                        text-center py-2.5 text-sm font-semibold translate-y-full
+                        group-hover:translate-y-0 transition-transform duration-300">
           Quick View
         </div>
       </Link>
@@ -74,10 +84,8 @@ export default function ProductCard({ product }) {
         </p>
 
         <Link to={`/products/${product._id}`}>
-          <h3
-            className="font-display font-semibold text-gray-800 text-sm leading-snug
-                         line-clamp-2 hover:text-primary transition-colors"
-          >
+          <h3 className="font-display font-semibold text-gray-800 text-sm
+                         leading-snug line-clamp-2 hover:text-primary transition-colors">
             {product.name}
           </h3>
         </Link>
@@ -95,22 +103,19 @@ export default function ProductCard({ product }) {
         {/* Price Row */}
         <div className="flex items-center justify-between mt-2">
           <div className="flex flex-col">
-            {/* Price + Original + Discount */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Discounted / Main Price */}
+              {/* Main Price */}
               <span className="font-bold text-gray-900 text-base">
-                ₹{discountedPrice.toLocaleString("en-IN")}
+                ₹{discountedPrice.toLocaleString('en-IN')}
               </span>
-
-              {/* Original Price in brackets */}
+              {/* Original Price */}
               {product.discount > 0 && (
                 <span className="text-xs text-gray-400 line-through">
-                  (₹{product.price.toLocaleString("en-IN")})
+                  (₹{product.price.toLocaleString('en-IN')})
                 </span>
               )}
             </div>
-
-            {/* Discount % — નીચે show */}
+            {/* Discount % */}
             {product.discount > 0 && (
               <span className="text-xs text-green-600 font-semibold mt-0.5">
                 {product.discount}% off
@@ -120,9 +125,7 @@ export default function ProductCard({ product }) {
 
           {/* Add to Cart */}
           <button
-            onClick={() =>
-              dispatch(addToCart({ ...product, price: discountedPrice }))
-            }
+            onClick={() => dispatch(addToCart({ ...product, price: discountedPrice }))}
             disabled={product.stock === 0}
             className="p-2 bg-rose text-primary rounded-full hover:bg-primary hover:text-white
                        transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"

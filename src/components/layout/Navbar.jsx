@@ -38,6 +38,11 @@ export default function Navbar() {
 
   const userMenuRef = useRef(null);
 
+  // ── Active state detection ──
+  const searchParams = new URLSearchParams(location.search);
+  const activeCategory = searchParams.get("category");
+  const isAllProducts = location.pathname === "/products" && !activeCategory;
+
   // ── Close user menu when clicking outside ──
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -128,6 +133,7 @@ export default function Navbar() {
               </span>
             )}
           </Link>
+
           {/* Cart */}
           <Link
             to="/cart"
@@ -221,17 +227,30 @@ export default function Navbar() {
       {/* Category nav - desktop */}
       <div className="hidden md:block border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 py-2">
+          {/* All Products */}
           <Link
             to="/products"
-            className="text-sm font-semibold text-gray-700 hover:text-primary transition-colors py-1"
+            className={`text-sm font-semibold py-1 transition-colors whitespace-nowrap
+              ${
+                isAllProducts
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-gray-700 hover:text-primary"
+              }`}
           >
             All Products
           </Link>
+
+          {/* Category links */}
           {CATEGORIES.map((cat) => (
             <Link
               key={cat}
               to={`/products?category=${cat}`}
-              className="text-sm text-gray-600 hover:text-primary transition-colors py-1 whitespace-nowrap"
+              className={`text-sm py-1 transition-colors whitespace-nowrap
+                ${
+                  activeCategory === cat
+                    ? "font-bold text-primary border-b-2 border-primary"
+                    : "text-gray-600 hover:text-primary"
+                }`}
             >
               {cat}
             </Link>
@@ -259,13 +278,34 @@ export default function Navbar() {
               </button>
             </div>
           </form>
+
           <div className="px-4 py-2 flex flex-wrap gap-2">
+            {/* All Products - mobile */}
+            <Link
+              to="/products"
+              onClick={() => setMenuOpen(false)}
+              className={`badge text-xs px-3 py-1.5 border transition-colors
+                ${
+                  isAllProducts
+                    ? "bg-primary text-white border-primary"
+                    : "bg-rose text-primary border-primary/20"
+                }`}
+            >
+              All Products
+            </Link>
+
+            {/* Categories - mobile */}
             {CATEGORIES.map((cat) => (
               <Link
                 key={cat}
                 to={`/products?category=${cat}`}
                 onClick={() => setMenuOpen(false)}
-                className="badge bg-rose text-primary border border-primary/20 text-xs px-3 py-1.5"
+                className={`badge text-xs px-3 py-1.5 border transition-colors
+                  ${
+                    activeCategory === cat
+                      ? "bg-primary text-white border-primary"
+                      : "bg-rose text-primary border-primary/20"
+                  }`}
               >
                 {cat}
               </Link>

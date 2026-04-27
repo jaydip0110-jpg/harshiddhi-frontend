@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { FiUpload, FiX, FiSave, FiArrowLeft } from "react-icons/fi";
+import { FiUpload, FiX, FiSave, FiArrowLeft, FiImage } from "react-icons/fi";
 import toast from "react-hot-toast";
 
 const CATEGORIES = [
@@ -37,10 +37,9 @@ const EMPTY = {
   discount: 0,
   featured: false,
   images: [],
-  sizes: [], // ← Add this
+  sizes: [],
 };
 
-// ── API URL — Dev અને Production ──
 const BASE =
   import.meta.env.MODE === "production"
     ? "https://harshiddhi-backend.onrender.com"
@@ -54,27 +53,24 @@ export default function ProductForm() {
   const isEdit = Boolean(id);
   const [form, setForm] = useState(EMPTY);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [saving, setSaving] = useState(false);
   const [imgUrl, setImgUrl] = useState("");
 
-  // ── Token Get ──
   const getToken = () => {
     try {
       const t1 = localStorage.getItem("userToken");
       if (t1) return t1;
-
       const userInfo = localStorage.getItem("userInfo");
       if (userInfo) {
         const t2 = JSON.parse(userInfo)?.token;
         if (t2) return t2;
       }
-
       const persisted = localStorage.getItem("harshiddhi");
       if (persisted) {
         const t3 = JSON.parse(persisted)?.auth?.user?.token;
         if (t3) return t3;
       }
-
       if (user?.token) return user.token;
     } catch (_) {}
     return null;
@@ -84,7 +80,6 @@ export default function ProductForm() {
     if (isEdit) fetchProduct();
   }, [id]);
 
-  // ── Fetch Product for Edit ──
   const fetchProduct = async () => {
     try {
       const res = await fetch(`${BASE}/api/products/${id}`);
@@ -112,7 +107,6 @@ export default function ProductForm() {
     setForm((p) => ({ ...p, [name]: type === "checkbox" ? checked : value }));
   };
 
-  // Size select/deselect toggle
   const toggleSize = (size) => {
     setForm((p) => ({
       ...p,
@@ -122,79 +116,110 @@ export default function ProductForm() {
     }));
   };
 
-  // ── Image Upload ──
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // ── Single image upload helper ──
+  const uploadSingleFile = async (file, token) => {
+    const fd = new FormData();
+    fd.append("image", file);
+    const response = await fetch(`${BASE}/api/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || "Upload failed");
+    return data.url;
+  };
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File size must be less than 5MB");
+  // ── Multiple Images Upload ──
+  const handleImageUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    // 10 images thi vadhu nahi
+    if (form.images.length + files.length > 10) {
+      toast.error("Maximum 10 images allowed");
+      return;
+    }
+
+    // Size check — dareknii 5MB thi vadhu nahi
+    const oversized = files.find((f) => f.size > 5 * 1024 * 1024);
+    if (oversized) {
+      toast.error(`"${oversized.name}" 5MB thi vadhu che`);
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      toast.error("Session expired! Please login again");
+      navigate("/login");
       return;
     }
 
     setUploading(true);
+    setUploadProgress({ done: 0, total: files.length });
 
-    try {
-      const token = getToken();
+    const uploadedUrls = [];
+    const failed = [];
 
-      if (!token) {
-        toast.error("Session expired! Please login again");
-        navigate("/login");
-        return;
-      }
+    // Ek ek file upload karo — parallel
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          const url = await uploadSingleFile(file, token);
+          uploadedUrls.push(url);
+        } catch (err) {
+          failed.push(file.name);
+        } finally {
+          setUploadProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+        }
+      }),
+    );
 
-      const fd = new FormData();
-      fd.append("image", file);
-
-      // Production અને Dev બંને માટે correct URL
-      const response = await fetch(`${BASE}/api/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || `Upload failed: ${response.status}`);
-      }
-
-      setForm((p) => ({ ...p, images: [...p.images, data.url] }));
-      toast.success("Image uploaded! ✅");
-    } catch (err) {
-      toast.error(err.message || "Upload failed");
-    } finally {
-      setUploading(false);
-      e.target.value = "";
+    if (uploadedUrls.length > 0) {
+      setForm((p) => ({ ...p, images: [...p.images, ...uploadedUrls] }));
+      toast.success(`${uploadedUrls.length} image(s) uploaded! ✅`);
     }
+    if (failed.length > 0) {
+      toast.error(`${failed.length} image(s) fail thyi: ${failed.join(", ")}`);
+    }
+
+    setUploading(false);
+    setUploadProgress({ done: 0, total: 0 });
+    e.target.value = "";
   };
 
-  // ── Add Image URL ──
   const addImgUrl = () => {
     if (!imgUrl.trim()) return;
+    if (form.images.length >= 10) {
+      toast.error("Maximum 10 images allowed");
+      return;
+    }
     setForm((p) => ({ ...p, images: [...p.images, imgUrl.trim()] }));
     setImgUrl("");
     toast.success("Image added! ✅");
   };
 
-  // ── Remove Image ──
+  // ── Drag to reorder ──
+  const moveImage = (from, to) => {
+    const imgs = [...form.images];
+    const [moved] = imgs.splice(from, 1);
+    imgs.splice(to, 0, moved);
+    setForm((p) => ({ ...p, images: imgs }));
+  };
+
   const removeImage = (idx) => {
     setForm((p) => ({ ...p, images: p.images.filter((_, i) => i !== idx) }));
   };
 
-  // ── Submit Form ──
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!form.name) return toast.error("Product name જરૂરી છે");
     if (!form.price) return toast.error("Price જરૂરી છે");
     if (!form.stock) return toast.error("Stock જરૂરી છે");
 
     setSaving(true);
-
     try {
       const token = getToken();
-
       if (!token) {
         toast.error("Session expired! Please login again");
         navigate("/login");
@@ -208,7 +233,6 @@ export default function ProductForm() {
         discount: Number(form.discount),
       };
 
-      // Production અને Dev બંને માટે correct URL
       const url = isEdit
         ? `${BASE}/api/products/${id}`
         : `${BASE}/api/products`;
@@ -224,10 +248,7 @@ export default function ProductForm() {
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Save failed");
-      }
+      if (!response.ok) throw new Error(data.message || "Save failed");
 
       toast.success(isEdit ? "Product updated! ✅" : "Product created! ✅");
       navigate("/admin/products");
@@ -242,8 +263,7 @@ export default function ProductForm() {
     <div className="max-w-3xl mx-auto px-4 py-8 page-enter">
       <button
         onClick={() => navigate("/admin/products")}
-        className="flex items-center gap-2 text-sm text-gray-500
-                   hover:text-primary mb-6 transition-colors"
+        className="flex items-center gap-2 text-sm text-gray-500 hover:text-primary mb-6 transition-colors"
       >
         <FiArrowLeft size={16} /> Back to Products
       </button>
@@ -253,7 +273,7 @@ export default function ProductForm() {
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ── Basic Info ── */}
+        {/* Basic Info */}
         <div className="card p-6 border border-gray-100 space-y-4">
           <h2 className="font-semibold text-gray-700">Basic Information</h2>
 
@@ -377,7 +397,7 @@ export default function ProductForm() {
             </div>
           </div>
 
-          {/* ── Sizes ── */}
+          {/* Sizes */}
           <div>
             <label className="text-sm text-gray-600 mb-2 block font-medium">
               Available Sizes
@@ -389,11 +409,11 @@ export default function ProductForm() {
                   type="button"
                   onClick={() => toggleSize(size)}
                   className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all
-          ${
-            form.sizes.includes(size)
-              ? "bg-primary text-white border-primary shadow-md"
-              : "bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary"
-          }`}
+                    ${
+                      form.sizes.includes(size)
+                        ? "bg-primary text-white border-primary shadow-md"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary"
+                    }`}
                 >
                   {size}
                 </button>
@@ -406,7 +426,6 @@ export default function ProductForm() {
             )}
           </div>
 
-          
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -421,60 +440,158 @@ export default function ProductForm() {
           </label>
         </div>
 
-        {/* ── Images ── */}
+        {/* ── Images Section ── */}
         <div className="card p-6 border border-gray-100">
-          <h2 className="font-semibold text-gray-700 mb-4">Product Images</h2>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-semibold text-gray-700">Product Images</h2>
+            <span
+              className={`text-xs font-medium px-2 py-0.5 rounded-full
+              ${
+                form.images.length >= 10
+                  ? "bg-red-100 text-red-600"
+                  : "bg-gray-100 text-gray-500"
+              }`}
+            >
+              {form.images.length} / 10
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">
+            Pehli image main photo tarke dikhe che. Drag karva thi order
+            badlavo.
+          </p>
 
-          {/* Preview */}
+          {/* Image Preview Grid */}
           {form.images.length > 0 && (
-            <div className="flex flex-wrap gap-3 mb-4">
+            <div className="grid grid-cols-4 gap-3 mb-4">
               {form.images.map((img, i) => (
                 <div key={i} className="relative group">
-                  <img
-                    src={img}
-                    alt=""
-                    className="w-20 h-24 object-cover rounded-xl border border-gray-200"
-                  />
+                  <div
+                    className={`relative rounded-xl overflow-hidden border-2 transition-all
+                    ${i === 0 ? "border-primary" : "border-gray-200"}`}
+                  >
+                    <img
+                      src={img}
+                      alt=""
+                      className="w-full aspect-[3/4] object-cover"
+                    />
+
+                    {/* Main photo label */}
+                    {i === 0 && (
+                      <div
+                        className="absolute bottom-0 left-0 right-0 bg-primary/80
+                                      text-white text-center text-xs py-1 font-semibold"
+                      >
+                        Main
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remove button */}
                   <button
                     type="button"
                     onClick={() => removeImage(i)}
                     className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full
-                               p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                               p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
                   >
-                    <FiX size={12} />
+                    <FiX size={11} />
                   </button>
+
+                  {/* Move left / right */}
+                  <div
+                    className="absolute bottom-1 left-1 right-1 flex justify-between
+                                  opacity-0 group-hover:opacity-100 transition-opacity z-10 gap-1"
+                  >
+                    {i > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => moveImage(i, i - 1)}
+                        className="bg-white/90 text-gray-700 rounded-full px-1.5 py-0.5 text-xs font-bold shadow"
+                      >
+                        ←
+                      </button>
+                    )}
+                    {i < form.images.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => moveImage(i, i + 1)}
+                        className="bg-white/90 text-gray-700 rounded-full px-1.5 py-0.5 text-xs font-bold shadow ml-auto"
+                      >
+                        →
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Upload */}
-          <label
-            className="flex items-center gap-3 p-4 border-2 border-dashed border-gray-200
-                            rounded-xl cursor-pointer hover:border-primary hover:bg-rose/30
-                            transition-all mb-3"
-          >
-            <FiUpload className="text-primary shrink-0" size={20} />
-            <span className="text-sm text-gray-600">
-              {uploading
-                ? "⏳ Uploading..."
-                : "Click to upload image (max 5MB)"}
-            </span>
-            <input
-              type="file"
-              accept="image/jpeg,image/jpg,image/png,image/webp"
-              onChange={handleImageUpload}
-              className="hidden"
-              disabled={uploading}
-            />
-          </label>
+          {/* Upload Area */}
+          {form.images.length < 10 && (
+            <label
+              className={`flex flex-col items-center gap-2 p-6 border-2 border-dashed
+                              rounded-xl cursor-pointer transition-all mb-3
+                              ${
+                                uploading
+                                  ? "border-primary bg-rose/20 cursor-not-allowed"
+                                  : "border-gray-200 hover:border-primary hover:bg-rose/20"
+                              }`}
+            >
+              {uploading ? (
+                <>
+                  <div
+                    className="w-8 h-8 border-2 border-primary border-t-transparent
+                                  rounded-full animate-spin"
+                  />
+                  <span className="text-sm text-primary font-medium">
+                    Uploading {uploadProgress.done}/{uploadProgress.total}...
+                  </span>
+                  {/* Progress bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                    <div
+                      className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${uploadProgress.total > 0 ? (uploadProgress.done / uploadProgress.total) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <FiUpload className="text-primary" size={28} />
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-700">
+                      Click karva thi multiple photos select karo
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Ek saath ghanaye photos choose kari shakay • Max 5MB per
+                      image • JPG, PNG, WebP
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <FiImage size={14} className="text-primary" />
+                    <span className="text-xs text-primary font-medium">
+                      {10 - form.images.length} image(s) add kari shakay cho
+                    </span>
+                  </div>
+                </>
+              )}
+              <input
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                multiple
+                onChange={handleImageUpload}
+                className="hidden"
+                disabled={uploading}
+              />
+            </label>
+          )}
 
-          {/* URL */}
+          {/* URL input */}
           <div className="flex gap-2">
             <input
               value={imgUrl}
               onChange={(e) => setImgUrl(e.target.value)}
-              placeholder="Or paste image URL..."
+              placeholder="Ya image URL paste karo..."
               className="input-field flex-1 text-sm"
               onKeyDown={(e) =>
                 e.key === "Enter" && (e.preventDefault(), addImgUrl())
@@ -484,13 +601,14 @@ export default function ProductForm() {
               type="button"
               onClick={addImgUrl}
               className="btn-outline text-sm px-4 py-2.5 shrink-0"
+              disabled={form.images.length >= 10}
             >
               Add
             </button>
           </div>
         </div>
 
-        {/* ── Submit ── */}
+        {/* Submit */}
         <button
           type="submit"
           disabled={saving}

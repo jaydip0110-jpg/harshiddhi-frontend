@@ -50,7 +50,7 @@ export default function ProductsPage() {
 
   const sortRef = useRef(null);
 
-  // Close sort dropdown on outside click
+  // Close sort on outside click
   useEffect(() => {
     const handler = (e) => {
       if (sortRef.current && !sortRef.current.contains(e.target)) {
@@ -103,10 +103,9 @@ export default function ProductsPage() {
 
   const activeSort =
     SORT_OPTIONS.find((o) => o.value === sort) || SORT_OPTIONS[0];
-
   const hasFilters = category || minPrice || maxPrice || selectedGender;
 
-  // ── Radio Button Component ──
+  // Radio Button
   const RadioBtn = ({ selected }) => (
     <div
       className={`w-5 h-5 rounded-full border-2 flex items-center justify-center
@@ -117,15 +116,14 @@ export default function ProductsPage() {
     </div>
   );
 
-  // ── Filter Panel ──
+  // Filter Panel
   const FilterPanel = () => (
     <div className="space-y-5">
-      {/* FILTERS Title */}
       <h4 className="font-bold text-gray-800 uppercase text-sm tracking-widest">
         Filters
       </h4>
 
-      {/* ── Gender ── */}
+      {/* Gender */}
       <div>
         <div className="flex flex-col gap-3">
           {GENDER_FILTERS.map((g) => (
@@ -137,7 +135,11 @@ export default function ProductsPage() {
               <RadioBtn selected={selectedGender === g} />
               <span
                 className={`text-sm transition-colors
-                ${selectedGender === g ? "text-primary font-semibold" : "text-gray-700 group-hover:text-primary"}`}
+                ${
+                  selectedGender === g
+                    ? "text-primary font-semibold"
+                    : "text-gray-700 group-hover:text-primary"
+                }`}
               >
                 {g}
               </span>
@@ -148,7 +150,7 @@ export default function ProductsPage() {
 
       <div className="border-t border-gray-200" />
 
-      {/* ── Category ── */}
+      {/* Category */}
       <div>
         <h4 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">
           Category
@@ -168,7 +170,11 @@ export default function ProductsPage() {
                 <RadioBtn selected={selected} />
                 <span
                   className={`text-sm transition-colors
-                  ${selected ? "text-primary font-semibold" : "text-gray-700 group-hover:text-primary"}`}
+                  ${
+                    selected
+                      ? "text-primary font-semibold"
+                      : "text-gray-700 group-hover:text-primary"
+                  }`}
                 >
                   {cat}
                 </span>
@@ -180,7 +186,7 @@ export default function ProductsPage() {
 
       <div className="border-t border-gray-200" />
 
-      {/* ── Price ── */}
+      {/* Price */}
       <div>
         <h4 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">
           Price Range
@@ -201,7 +207,11 @@ export default function ProductsPage() {
                 <RadioBtn selected={selected} />
                 <span
                   className={`text-sm transition-colors
-                  ${selected ? "text-primary font-semibold" : "text-gray-700 group-hover:text-primary"}`}
+                  ${
+                    selected
+                      ? "text-primary font-semibold"
+                      : "text-gray-700 group-hover:text-primary"
+                  }`}
                 >
                   {r.label}
                 </span>
@@ -233,7 +243,7 @@ export default function ProductsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 page-enter">
-      {/* ── Top Bar ── */}
+      {/* Top Bar */}
       <div className="flex items-center justify-between py-4 border-b border-gray-200">
         <div>
           <h1 className="font-display text-2xl font-bold text-gray-800">
@@ -282,7 +292,11 @@ export default function ProductsPage() {
                       setSortOpen(false);
                     }}
                     className={`w-full text-left px-4 py-3 text-sm transition-colors
-                      ${sort === opt.value ? "bg-primary text-white font-semibold" : "hover:bg-rose text-gray-700"}`}
+                      ${
+                        sort === opt.value
+                          ? "bg-primary text-white font-semibold"
+                          : "hover:bg-rose text-gray-700"
+                      }`}
                   >
                     {sort === opt.value && "✓ "}
                     {opt.label}
@@ -294,7 +308,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* ── Active Filter Tags ── */}
+      {/* Active Filter Tags */}
       {hasFilters && (
         <div className="flex flex-wrap gap-2 py-3">
           {selectedGender && (
@@ -348,14 +362,14 @@ export default function ProductsPage() {
       )}
 
       <div className="flex gap-6 pt-4">
-        {/* ── Sidebar Desktop — Always Visible ── */}
+        {/* Sidebar Desktop */}
         <aside className="hidden md:block w-56 shrink-0">
           <div className="sticky top-24 bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
             <FilterPanel />
           </div>
         </aside>
 
-        {/* ── Mobile Filter Drawer ── */}
+        {/* Mobile Filter Drawer */}
         {drawerOpen && (
           <div className="fixed inset-0 z-50 flex">
             <div
@@ -376,7 +390,7 @@ export default function ProductsPage() {
           </div>
         )}
 
-        {/* ── Product Grid ── */}
+        {/* Product Grid */}
         <div className="flex-1">
           {loading ? (
             <ProductGridSkeleton count={8} />
@@ -392,18 +406,10 @@ export default function ProductsPage() {
             </div>
           ) : (
             <>
+              {/* ✅ NEW badge ProductCard handle કરે — no extra wrapper needed */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {sortedProducts.map((p, i) => (
-                  <div key={p._id} className="relative">
-                    {i < 3 && sort === "newest" && (
-                      <div className="absolute top-2 left-2 z-10">
-                        <span className="bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow">
-                          NEW
-                        </span>
-                      </div>
-                    )}
-                    <ProductCard product={p} />
-                  </div>
+                {sortedProducts.map((p) => (
+                  <ProductCard key={p._id} product={p} />
                 ))}
               </div>
               <Pagination page={curPage} pages={pages} onPageChange={setPage} />

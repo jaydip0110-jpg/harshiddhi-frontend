@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchProductById } from "../redux/slices/productSlice";
@@ -33,6 +33,12 @@ export default function ProductDetailPage() {
   const [comment, setComment] = useState("");
   const [reviewing, setReviewing] = useState(false);
 
+  // ── Swipe gallery refs ──
+  const scrollRef = useRef(null);
+  const touchStartX = useRef(null);
+  const autoPlayRef = useRef(null);
+  const [isPaused, setIsPaused] = useState(false);
+
   useEffect(() => {
     dispatch(fetchProductById(id));
     setActiveImg(0);
@@ -40,7 +46,61 @@ export default function ProductDetailPage() {
     setQty(1);
   }, [id, dispatch]);
 
-  // Loading skeleton
+  // ── Auto-slide: 3 second ma automatically next image ──
+  useEffect(() => {
+    if (!product?.images?.length || product.images.length <= 1) return;
+    if (isPaused) return;
+
+    autoPlayRef.current = setInterval(() => {
+      setActiveImg((prev) => {
+        const total = product.images.length;
+        return (prev + 1) % total; // last image baad first par aave
+      });
+    }, 3000);
+
+    return () => clearInterval(autoPlayRef.current);
+  }, [isPaused, product]);
+
+  // ── User manually change kare to 5 sec pause ──
+  const pauseAndGo = (index) => {
+    setIsPaused(true);
+    setActiveImg(index);
+    clearInterval(autoPlayRef.current);
+    setTimeout(() => setIsPaused(false), 5000);
+  };
+
+  // ── Scroll to active image when changed ──
+  useEffect(() => {
+    if (scrollRef.current) {
+      const el = scrollRef.current;
+      const itemWidth = el.offsetWidth;
+      el.scrollTo({ left: activeImg * itemWidth, behavior: "smooth" });
+    }
+  }, [activeImg]);
+
+  // ── Detect scroll to update dot ──
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const el = scrollRef.current;
+      const index = Math.round(el.scrollLeft / el.offsetWidth);
+      setActiveImg(index);
+    }
+  };
+
+  // ── Touch swipe support ──
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) pauseAndGo(Math.min(images.length - 1, activeImg + 1));
+      else pauseAndGo(Math.max(0, activeImg - 1));
+    }
+    touchStartX.current = null;
+  };
+
   if (loading || !product)
     return (
       <div className="max-w-7xl mx-auto px-4 py-12">
@@ -63,11 +123,9 @@ export default function ProductDetailPage() {
     ? Math.round(product.price * (1 - product.discount / 100))
     : product.price;
 
-  // ── Add to Cart ──
   const handleAddToCart = () => {
-    if (product.sizes?.length > 0 && !selectedSize) {
+    if (product.sizes?.length > 0 && !selectedSize)
       return toast.error("Please select a size first");
-    }
     dispatch(
       addToCart({
         ...product,
@@ -78,11 +136,9 @@ export default function ProductDetailPage() {
     );
   };
 
-  // ── Buy Now ──
   const handleBuyNow = () => {
-    if (product.sizes?.length > 0 && !selectedSize) {
+    if (product.sizes?.length > 0 && !selectedSize)
       return toast.error("Please select a size first");
-    }
     dispatch(
       addToCart({
         ...product,
@@ -94,7 +150,6 @@ export default function ProductDetailPage() {
     navigate("/cart");
   };
 
-  // ── Submit Review ──
   const handleReview = async (e) => {
     e.preventDefault();
     setReviewing(true);
@@ -120,26 +175,41 @@ export default function ProductDetailPage() {
       {/* Back Button */}
       <button
         onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-sm text-gray-500
-                   hover:text-primary transition-colors mb-6"
+        className="flex items-center gap-2 text-sm text-gray-500 hover:text-primary transition-colors mb-6"
       >
         <FiArrowLeft size={16} /> Back
       </button>
 
       <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
-        {/* ── Images ── */}
+        {/* ── Image Gallery ── */}
         <div className="space-y-3">
-          <div className="aspect-[3/4] rounded-2xl overflow-hidden bg-gray-100 shadow-lg relative">
-            <img
-              src={images[activeImg]}
-              alt={product.name}
-              className="w-full h-full object-cover transition-all duration-500"
-            />
-            {/* Wishlist on detail page */}
+          {/* ── Horizontal Swipe Container ── */}
+          <div className="relative rounded-2xl overflow-hidden bg-gray-100 shadow-lg aspect-[3/4]">
+            {/* Scrollable image strip */}
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scroll-smooth"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {images.map((img, i) => (
+                <div key={i} className="shrink-0 w-full h-full snap-center">
+                  <img
+                    src={img}
+                    alt={`${product.name} - ${i + 1}`}
+                    className="w-full h-full object-cover"
+                    loading={i === 0 ? "eager" : "lazy"}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Wishlist button */}
             <button
               onClick={() => dispatch(addToWishlist(product))}
-              className="absolute top-3 right-3 p-3 bg-white rounded-full shadow-lg
-                         hover:scale-110 transition-all"
+              className="absolute top-3 right-3 p-3 bg-white rounded-full shadow-lg hover:scale-110 transition-all z-10"
             >
               {isWishlisted ? (
                 <FaHeart size={20} className="text-primary" />
@@ -147,11 +217,74 @@ export default function ProductDetailPage() {
                 <FiHeart size={20} className="text-gray-400" />
               )}
             </button>
+
+            {/* Image counter badge — top left */}
+            {images.length > 1 && (
+              <div className="absolute top-3 left-3 bg-black/50 text-white text-xs px-2.5 py-1 rounded-full z-10 font-medium">
+                {activeImg + 1} / {images.length}
+              </div>
+            )}
+
+            {/* Left arrow */}
+            {images.length > 1 && (
+              <button
+                onClick={() =>
+                  pauseAndGo(
+                    activeImg === 0 ? images.length - 1 : activeImg - 1,
+                  )
+                }
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white
+                           p-2 rounded-full shadow-md transition-all z-10"
+              >
+                <FiArrowLeft size={18} className="text-gray-700" />
+              </button>
+            )}
+
+            {/* Right arrow */}
+            {images.length > 1 && (
+              <button
+                onClick={() => pauseAndGo((activeImg + 1) % images.length)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white
+                           p-2 rounded-full shadow-md transition-all z-10"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-gray-700"
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            )}
+
+            {/* Dots pagination */}
+            {images.length > 1 && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                {images.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => pauseAndGo(i)}
+                    className={`rounded-full transition-all duration-300
+                      ${
+                        i === activeImg
+                          ? "bg-primary w-5 h-2"
+                          : "bg-white/70 w-2 h-2"
+                      }`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Thumbnail Strip */}
+          {/* Thumbnail Strip — desktop only */}
           {images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="hidden md:flex gap-2 overflow-x-auto pb-1">
               {images.map((img, i) => (
                 <button
                   key={i}
@@ -250,7 +383,7 @@ export default function ProductDetailPage() {
             {product.description}
           </p>
 
-          {/* ── Size Selector ── */}
+          {/* Size Selector */}
           {product.sizes && product.sizes.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -263,7 +396,6 @@ export default function ProductDetailPage() {
                   </span>
                 )}
               </div>
-
               <div className="flex flex-wrap gap-2">
                 {product.sizes.map((size) => (
                   <button
@@ -272,8 +404,7 @@ export default function ProductDetailPage() {
                     onClick={() =>
                       setSelectedSize(selectedSize === size ? "" : size)
                     }
-                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold
-                                border-2 transition-all duration-200
+                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all duration-200
                       ${
                         selectedSize === size
                           ? "bg-primary text-white border-primary shadow-md scale-105"
@@ -284,7 +415,6 @@ export default function ProductDetailPage() {
                   </button>
                 ))}
               </div>
-
               {!selectedSize && (
                 <p className="text-xs text-amber-500 mt-2 flex items-center gap-1">
                   ⚠️ Please select a size before adding to cart
@@ -293,7 +423,7 @@ export default function ProductDetailPage() {
             </div>
           )}
 
-          {/* ── Quantity ── */}
+          {/* Quantity */}
           {product.stock > 0 && (
             <div className="flex items-center gap-4">
               <span className="text-sm font-semibold text-gray-700">Qty:</span>
@@ -317,21 +447,19 @@ export default function ProductDetailPage() {
             </div>
           )}
 
-          {/* ── CTAs ── */}
+          {/* CTAs */}
           <div className="flex gap-3 flex-wrap">
             <button
               onClick={handleAddToCart}
               disabled={product.stock === 0}
-              className="btn-outline flex items-center gap-2 flex-1
-                         justify-center min-w-[140px]"
+              className="btn-outline flex items-center gap-2 flex-1 justify-center min-w-[140px]"
             >
               <FiShoppingCart size={16} /> Add to Cart
             </button>
             <button
               onClick={handleBuyNow}
               disabled={product.stock === 0}
-              className="btn-primary flex items-center gap-2 flex-1
-                         justify-center min-w-[140px]"
+              className="btn-primary flex items-center gap-2 flex-1 justify-center min-w-[140px]"
             >
               <FiZap size={16} /> Buy Now
             </button>
@@ -357,13 +485,12 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* ── Reviews ── */}
+      {/* Reviews */}
       <section className="mt-16">
         <h2 className="font-display text-2xl font-bold text-gray-800 mb-6">
           Customer Reviews
         </h2>
         <div className="grid md:grid-cols-2 gap-8">
-          {/* Review List */}
           <div className="space-y-4">
             {product.reviews?.length === 0 && (
               <p className="text-gray-400 italic">
@@ -393,7 +520,6 @@ export default function ProductDetailPage() {
             ))}
           </div>
 
-          {/* Write Review */}
           {user && (
             <div className="card p-6 border border-gray-100">
               <h3 className="font-semibold mb-4">Write a Review</h3>
