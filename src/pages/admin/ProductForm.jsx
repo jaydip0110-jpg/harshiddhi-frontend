@@ -13,6 +13,16 @@ const CATEGORIES = [
   "Dupattas",
 ];
 
+const HOME_CATEGORIES = [
+  "None",
+  "Sarees",
+  "Dresses",
+  "Lehenga",
+  "Suits",
+  "Kurtis",
+  "Dupattas",
+];
+
 const ALL_SIZES = [
   "Free Size",
   "XS",
@@ -36,6 +46,7 @@ const EMPTY = {
   stock: "",
   discount: 0,
   featured: false,
+  homeCategory: "None", // ← Add
   images: [],
   sizes: [],
 };
@@ -94,6 +105,7 @@ export default function ProductForm() {
         stock: data.stock || "",
         discount: data.discount || 0,
         featured: data.featured || false,
+        homeCategory: data.homeCategory || "None",
         images: data.images || [],
         sizes: data.sizes || [],
       });
@@ -438,6 +450,69 @@ export default function ProductForm() {
               Feature this product on homepage
             </span>
           </label>
+        </div>
+
+        {/* ── Home Page Category ── */}
+        <div className="card p-6 border border-gray-100 space-y-4">
+          <div>
+            <h2 className="font-semibold text-gray-700 mb-1">
+              🏠 Home Page Category Section
+            </h2>
+            <p className="text-xs text-gray-400 mb-4">
+              આ product Home page ના કયા category section માં show કરવો? "None"
+              select કરો તો Home page પર show નહીં થાય.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {HOME_CATEGORIES.map((hc) => (
+              <button
+                key={hc}
+                type="button"
+                onClick={() => setForm((p) => ({ ...p, homeCategory: hc }))}
+                className={`px-4 py-3 rounded-xl text-sm font-semibold border-2
+                    transition-all duration-200 text-center
+          ${
+            form.homeCategory === hc
+              ? "bg-primary text-white border-primary shadow-md"
+              : "bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary"
+          }`}
+              >
+                {hc === "None"
+                  ? "❌ None"
+                  : hc === "Sarees"
+                    ? "🥻 Sarees"
+                    : hc === "Dresses"
+                      ? "✨ Dresses"
+                      : hc === "Lehenga"
+                        ? "👗 Lehenga"
+                        : hc === "Suits"
+                          ? "👘 Suits"
+                          : hc === "Kurtis"
+                            ? "🌸 Kurtis"
+                            : hc === "Dupattas"
+                              ? "🎀 Dupattas"
+                              : hc}
+              </button>
+            ))}
+          </div>
+
+          {form.homeCategory !== "None" && (
+            <div className="p-3 bg-green-50 rounded-xl border border-green-200">
+              <p className="text-xs text-green-700 font-semibold">
+                ✅ આ product Home page ના "{form.homeCategory}" section માં show
+                થશે
+              </p>
+            </div>
+          )}
+
+          {form.homeCategory === "None" && (
+            <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+              <p className="text-xs text-gray-500">
+                ℹ️ Home page પર show નહીં થાય — ફક્ત Products page પર show થશે
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ── Images Section ── */}

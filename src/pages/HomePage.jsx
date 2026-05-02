@@ -91,6 +91,45 @@ const TESTIMONIALS = [
   },
 ];
 
+// ── Category Section Component ──
+function CategorySection({ categoryName, emoji, products, loading }) {
+  const filtered = products.filter((p) => p.homeCategory === categoryName);
+
+  if (!loading && filtered.length === 0) return null;
+
+  return (
+    <section className="py-12 border-b border-gray-100">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="font-display text-2xl md:text-3xl font-bold text-gray-800">
+              {emoji} {categoryName}
+            </h2>
+            <p className="text-gray-500 text-sm mt-1">
+              Latest {categoryName} collection
+            </p>
+          </div>
+          <Link
+            to={`/products?category=${categoryName}`}
+            className="flex items-center gap-2 text-primary font-semibold text-sm hover:underline"
+          >
+            View All <FiArrowRight size={14} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {loading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <ProductCardSkeleton key={i} />
+              ))
+            : filtered
+                .slice(0, 4)
+                .map((p) => <ProductCard key={p._id} product={p} />)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function HomePage() {
   const dispatch = useDispatch();
   const {
@@ -100,12 +139,10 @@ export default function HomePage() {
   } = useSelector((s) => s.product);
 
   useEffect(() => {
-    // Featured + Latest products fetch
     dispatch(fetchFeatured());
     dispatch(fetchProducts({ limit: 8, page: 1 }));
   }, [dispatch]);
 
-  // Latest 4 products — newly added
   const latestProducts = [...allProducts]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 4);
@@ -156,7 +193,7 @@ export default function HomePage() {
               <Link
                 to="/products?category=Sarees"
                 className="border-2 border-white/30 text-white px-8 py-3.5 rounded-full font-semibold
-                               hover:border-gold hover:text-gold transition-all duration-300"
+                           hover:border-gold hover:text-gold transition-all duration-300"
               >
                 Explore Sarees
               </Link>
@@ -211,14 +248,14 @@ export default function HomePage() {
             >
               <div
                 className={`w-full aspect-square rounded-2xl bg-gradient-to-br ${cat.color}
-                              overflow-hidden shadow-md group-hover:shadow-xl transition-all
-                              duration-300 group-hover:-translate-y-1`}
+                            overflow-hidden shadow-md group-hover:shadow-xl transition-all
+                            duration-300 group-hover:-translate-y-1`}
               >
                 <img
                   src={cat.img}
                   alt={cat.name}
                   className="w-full h-full object-cover mix-blend-multiply opacity-70
-                                group-hover:opacity-90 transition-all duration-300 group-hover:scale-105"
+                              group-hover:opacity-90 transition-all duration-300 group-hover:scale-105"
                 />
               </div>
               <span className="mt-2 font-semibold text-sm text-gray-700 group-hover:text-primary transition-colors">
@@ -229,7 +266,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── NEW Arrivals — Admin Add કરેલ Latest Products ── */}
+      {/* ── New Arrivals ── */}
       {latestProducts.length > 0 && (
         <section className="py-16 bg-white">
           <div className="max-w-7xl mx-auto px-4">
@@ -257,6 +294,17 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      {/* ── Per-Category Sections (homeCategory based) ── */}
+      {CATEGORIES.map((cat) => (
+        <CategorySection
+          key={cat.name}
+          categoryName={cat.name}
+          emoji={cat.emoji}
+          products={allProducts}
+          loading={loading}
+        />
+      ))}
 
       {/* ── Featured Collection ── */}
       <section className="py-16 bg-cream">
@@ -336,7 +384,7 @@ export default function HomePage() {
                 <div className="flex items-center gap-3">
                   <div
                     className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-gold
-                                  flex items-center justify-center text-white font-bold text-sm"
+                                flex items-center justify-center text-white font-bold text-sm"
                   >
                     {name[0]}
                   </div>
