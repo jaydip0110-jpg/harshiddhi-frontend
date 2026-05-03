@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { login } from "../redux/slices/authSlice";
+import { login, googleLogin } from "../redux/slices/authSlice";
 import { FiPhone, FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
 import toast from "react-hot-toast";
+import { auth, provider, signInWithPopup } from "../services/firebase";
 
 export default function LoginPage() {
   const dispatch = useDispatch();
@@ -19,6 +20,7 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false);
   const [agreed, setAgreed] = useState(true);
   const [step, setStep] = useState(1);
+  const [gLoading, setGLoading] = useState(false);
 
   const redirect = searchParams.get("redirect") || "/";
 
@@ -26,43 +28,63 @@ export default function LoginPage() {
     if (user) navigate(redirect, { replace: true });
   }, [user]);
 
-  // Step 1 — Continue button
   const validateEmail = (email) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(email);
   };
 
+  // Step 1 — Continue
   const handleContinue = (e) => {
     e.preventDefault();
-
     if (loginType === "phone") {
-      if (phone.length !== 10) {
+      if (phone.length !== 10)
         return toast.error("Valid 10-digit phone number નાખો");
-      }
     } else {
-      if (!validateEmail(email)) {
+      if (!validateEmail(email))
         return toast.error("Valid email નાખો — name123@gmail.com format");
-      }
     }
-
     if (!agreed) return toast.error("Please agree to Terms of Use");
     setStep(2);
   };
 
-  // Step 2 — Login button
+  // Step 2 — Login
   const handleLogin = (e) => {
     e.preventDefault();
     if (!password) return toast.error("Password નાખો");
-
-    // Email format — user123@gmail.com જેવો format
-    let loginEmail = email;
-
-    if (loginType === "phone") {
-      // Phone number થી login — backend માં phone field check કરે
-      loginEmail = `${phone}@harshiddhi.com`;
-    }
-
+    const loginEmail =
+      loginType === "phone" ? `${phone}@harshiddhi.com` : email;
     dispatch(login({ email: loginEmail, password }));
+  };
+
+  // ── Google Login ──
+  const handleGoogleLogin = async () => {
+    if (!agreed) return toast.error("Please agree to Terms of Use");
+    setGLoading(true);
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const gUser = result.user;
+
+      await dispatch(
+        googleLogin({
+          name: gUser.displayName,
+          email: gUser.email,
+          googleId: gUser.uid,
+          avatar: gUser.photoURL,
+        }),
+      ).unwrap();
+
+      navigate(redirect, { replace: true });
+    } catch (err) {
+      if (err.code === "auth/popup-closed-by-user") {
+        toast.error("Google login cancelled");
+      } else if (err.code === "auth/popup-blocked") {
+        toast.error("Popup blocked! Browser settings check કરો");
+      } else {
+        toast.error("Google login failed. Please try again.");
+      }
+    } finally {
+      setGLoading(false);
+    }
   };
 
   return (
@@ -101,11 +123,7 @@ export default function LoginPage() {
               }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5
                           rounded-xl text-sm font-semibold transition-all
-                ${
-                  loginType === "email"
-                    ? "bg-white shadow text-primary"
-                    : "text-gray-500"
-                }`}
+                ${loginType === "email" ? "bg-white shadow text-primary" : "text-gray-500"}`}
             >
               <FiMail size={15} /> Email
             </button>
@@ -117,11 +135,7 @@ export default function LoginPage() {
               }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5
                           rounded-xl text-sm font-semibold transition-all
-                ${
-                  loginType === "phone"
-                    ? "bg-white shadow text-primary"
-                    : "text-gray-500"
-                }`}
+                ${loginType === "phone" ? "bg-white shadow text-primary" : "text-gray-500"}`}
             >
               <FiPhone size={15} /> Phone
             </button>
@@ -135,7 +149,39 @@ export default function LoginPage() {
             Welcome to Harshiddhi Saari & Dresses 🌸
           </p>
 
-          {/* ── Step 1 — Enter Email or Phone ── */}
+          {/* ── Google Login Button — Top ── */}
+          <button
+            onClick={handleGoogleSignup}
+            disabled={gLoading}
+            className="w-full flex items-center justify-center gap-3 py-3.5 mb-4
+                       border-2 border-gray-200 rounded-2xl hover:border-primary
+                       hover:bg-rose/30 transition-all font-semibold text-sm text-gray-700
+                       disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {gLoading ? (
+              <>
+                <div
+                  className="w-5 h-5 border-2 border-primary border-t-transparent
+                                rounded-full animate-spin"
+                />
+                Signing in with Google...
+              </>
+            ) : (
+              <>
+                <FcGoogle size={22} />
+                Continue with Google
+              </>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 font-medium">OR</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
+          {/* ── Step 1 — Email/Phone ── */}
           {step === 1 && (
             <form onSubmit={handleContinue} className="space-y-4">
               {loginType === "email" ? (
@@ -209,10 +255,9 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* ── Step 2 — Enter Password ── */}
+          {/* ── Step 2 — Password ── */}
           {step === 2 && (
             <form onSubmit={handleLogin} className="space-y-4">
-              {/* Show entered value */}
               <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
                 <span className="text-sm font-semibold text-gray-700">
                   {loginType === "phone" ? `+91 ${phone}` : email}
@@ -229,7 +274,6 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              {/* Password */}
               <div className="relative">
                 <FiLock
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
@@ -243,17 +287,17 @@ export default function LoginPage() {
                   className="input-field pl-11 pr-12 py-3.5 rounded-2xl"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1 ml-1">
-                  Password format: Name@123
-                </p>
                 <button
                   type="button"
                   onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute right-4 top-5 text-gray-400"
                 >
                   {showPwd ? <FiEyeOff size={18} /> : <FiEye size={18} />}
                 </button>
               </div>
+              <p className="text-xs text-gray-500 -mt-2 ml-1">
+                Format: Name@123
+              </p>
 
               <button
                 type="submit"
@@ -266,26 +310,6 @@ export default function LoginPage() {
               </button>
             </form>
           )}
-
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs text-gray-400 font-medium">OR</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
-
-          {/* Google */}
-          <button
-            onClick={() =>
-              toast("Google login coming soon! 🌸", { icon: "🔜" })
-            }
-            className="w-full flex items-center justify-center gap-3 py-3.5
-                       border-2 border-gray-200 rounded-2xl hover:border-primary
-                       hover:bg-rose/30 transition-all font-semibold text-sm text-gray-700"
-          >
-            <FcGoogle size={22} />
-            Continue with Google
-          </button>
 
           <p className="text-center text-sm text-gray-500 mt-5">
             New here?{" "}
@@ -301,7 +325,7 @@ export default function LoginPage() {
           <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-700">
             <p className="font-semibold mb-1">Demo Login:</p>
             <p>Email: admin@harshiddhi.com</p>
-            <p>Password: admin123</p>
+            <p>Password: Admin@123</p>
           </div>
         </div>
       </div>

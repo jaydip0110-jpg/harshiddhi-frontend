@@ -91,6 +91,28 @@ export const login = createAsyncThunk(
   }
 );
 
+// ── Google Login ──
+export const googleLogin = createAsyncThunk(
+  'auth/googleLogin',
+  async (userData, { rejectWithValue }) => {
+    try {
+      const res  = await fetch(`${API_URL}/users/google-login`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(userData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Google login failed');
+      saveToken(data);
+      toast.success(`Welcome, ${data.name}! 🌸`);
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Google login failed');
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
 // ── Update Profile ──
 export const updateProfile = createAsyncThunk(
   'auth/updateProfile',
@@ -162,6 +184,19 @@ const authSlice = createSlice({
         s.loading = false;
         s.error   = payload;
       })
+      
+      // Google Login
+.addCase(googleLogin.pending,   (s) => { s.loading = true;  s.error = null; })
+.addCase(googleLogin.fulfilled, (s, { payload }) => {
+  s.loading = false;
+  s.user    = payload;
+  s.error   = null;
+})
+.addCase(googleLogin.rejected,  (s, { payload }) => {
+  s.loading = false;
+  s.error   = payload;
+})
+
       // Update Profile
       .addCase(updateProfile.fulfilled, (s, { payload }) => {
         s.user = { ...s.user, ...payload };
