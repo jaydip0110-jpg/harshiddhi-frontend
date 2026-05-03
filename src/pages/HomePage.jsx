@@ -93,7 +93,10 @@ const TESTIMONIALS = [
 
 // ── Category Section Component ──
 function CategorySection({ categoryName, emoji, products, loading }) {
-  const filtered = products.filter((p) => p.homeCategory === categoryName);
+  // ફક્ત showOnHome=true અને category match વાળા products
+  const filtered = products.filter(
+    (p) => p.showOnHome === true && p.category === categoryName,
+  );
 
   if (!loading && filtered.length === 0) return null;
 
