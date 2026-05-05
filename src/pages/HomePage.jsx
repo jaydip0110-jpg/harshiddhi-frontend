@@ -173,7 +173,7 @@ export default function HomePage() {
         <div className="relative z-10 max-w-7xl mx-auto px-6 py-20">
           <div className="max-w-2xl">
             <p className="text-gold text-sm font-body tracking-[0.3em] uppercase mb-4 animate-fade-in">
-              ✦ New Collection 2024 ✦
+              ✦ New Collection 2026 ✦
             </p>
             <h1 className="font-display text-5xl md:text-7xl font-bold text-white leading-tight mb-6 animate-slide-up">
               Wear the
