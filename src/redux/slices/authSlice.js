@@ -91,6 +91,49 @@ export const login = createAsyncThunk(
   }
 );
 
+// ── Send OTP ──
+export const sendOTP = createAsyncThunk(
+  'auth/sendOTP',
+  async ({ identifier }, { rejectWithValue }) => {
+    try {
+      const res  = await fetch(`${API_URL}/otp/send`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ identifier }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast.success('OTP sent! Check your email/phone 📨');
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Failed to send OTP');
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+// ── Verify OTP ──
+export const verifyOTP = createAsyncThunk(
+  'auth/verifyOTP',
+  async ({ identifier, otp }, { rejectWithValue }) => {
+    try {
+      const res  = await fetch(`${API_URL}/otp/verify`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ identifier, otp }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      saveToken(data);
+      toast.success(`Welcome! 🌸`);
+      return data;
+    } catch (err) {
+      toast.error(err.message || 'Invalid OTP');
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
 // ── Google Login ──
 export const googleLogin = createAsyncThunk(
   'auth/googleLogin',
@@ -185,6 +228,17 @@ const authSlice = createSlice({
         s.error   = payload;
       })
       
+      .addCase(verifyOTP.pending,   (s) => { s.loading = true;  s.error = null; })
+.addCase(verifyOTP.fulfilled, (s, { payload }) => {
+  s.loading = false;
+  s.user    = payload;
+  s.error   = null;
+})
+.addCase(verifyOTP.rejected,  (s, { payload }) => {
+  s.loading = false;
+  s.error   = payload;
+})
+
       // Google Login
 .addCase(googleLogin.pending,   (s) => { s.loading = true;  s.error = null; })
 .addCase(googleLogin.fulfilled, (s, { payload }) => {
