@@ -1,13 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  login,
-  googleLogin,
-  sendOTP,
-  verifyOTP,
-} from "../redux/slices/authSlice";
-import { FiLock, FiEye, FiEyeOff, FiUser, FiArrowLeft } from "react-icons/fi";
+import { googleLogin, sendOTP, verifyOTP } from "../redux/slices/authSlice";
+import { FiUser, FiArrowLeft } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
 import toast from "react-hot-toast";
 import { auth, provider, signInWithPopup } from "../services/firebase";
@@ -19,66 +14,68 @@ export default function LoginPage() {
   const { user, loading } = useSelector((s) => s.auth);
 
   const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
   const [agreed, setAgreed] = useState(true);
   const [gLoading, setGLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
-  const [loginMode, setLoginMode] = useState("password"); // 'password' or 'otp'
-
-  // step: 1=enter id, 2=enter password/otp
+  const [devOtp, setDevOtp] = useState("");
   const [step, setStep] = useState(1);
 
   const redirect = searchParams.get("redirect") || "/";
+
   const isPhone = /^[0-9]{10}$/.test(identifier);
   const isEmail = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(
     identifier,
   );
+  const isValid = isPhone || isEmail;
 
   useEffect(() => {
     if (user) navigate(redirect, { replace: true });
   }, [user]);
 
-  // Resend timer
+  // Resend Timer
   useEffect(() => {
     if (resendTimer > 0) {
-      const timer = setTimeout(() => setResendTimer((t) => t - 1), 1000);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => setResendTimer((p) => p - 1), 1000);
+      return () => clearTimeout(t);
     }
   }, [resendTimer]);
 
-  // Step 1 — Continue
-  const handleContinue = (e) => {
-    e.preventDefault();
-    if (!identifier.trim()) return toast.error("Email અથવા Phone number નાખો");
-    if (!isPhone && !isEmail)
-      return toast.error("Valid email અથવા 10-digit phone નાખો");
+  // Step 1 — Send OTP
+  const handleSendOTP = async (e) => {
+    e?.preventDefault();
+    if (!isValid) return toast.error("Valid email અથવા 10-digit phone નાખો");
     if (!agreed) return toast.error("Please agree to Terms of Use");
-    setStep(2);
-    setLoginMode("password");
-  };
 
-  // Password Login
-  const handlePasswordLogin = (e) => {
-    e.preventDefault();
-    if (!password) return toast.error("Password નાખો");
-    const loginEmail = isPhone ? `${identifier}@harshiddhi.com` : identifier;
-    dispatch(login({ email: loginEmail, password }));
-  };
-
-  // Send OTP
-  const handleSendOTP = async () => {
     try {
-      await dispatch(sendOTP({ identifier })).unwrap();
+      const result = await dispatch(sendOTP({ identifier })).unwrap();
       setOtpSent(true);
-      setLoginMode("otp");
+      setStep(2);
       setResendTimer(30);
+      // Dev mode OTP show
+      if (result.devOtp) {
+        setDevOtp(result.devOtp);
+        toast.success(`Dev OTP: ${result.devOtp}`, { duration: 10000 });
+      }
     } catch (_) {}
   };
 
-  // Verify OTP
+  // Resend OTP
+  const handleResend = async () => {
+    setOtp("");
+    setDevOtp("");
+    try {
+      const result = await dispatch(sendOTP({ identifier })).unwrap();
+      setResendTimer(30);
+      if (result.devOtp) {
+        setDevOtp(result.devOtp);
+        toast.success(`Dev OTP: ${result.devOtp}`, { duration: 10000 });
+      }
+    } catch (_) {}
+  };
+
+  // Step 2 — Verify OTP
   const handleVerifyOTP = async (e) => {
     e.preventDefault();
     if (otp.length !== 6) return toast.error("6-digit OTP નાખો");
@@ -144,9 +141,10 @@ export default function LoginPage() {
             Welcome to Harshiddhi Saari & Dresses 🌸
           </p>
 
-          {/* ── Step 1 — Enter Email/Phone ── */}
+          {/* ── Step 1 — Enter Email or Phone ── */}
           {step === 1 && (
-            <form onSubmit={handleContinue} className="space-y-4">
+            <form onSubmit={handleSendOTP} className="space-y-4">
+              {/* Input */}
               <div className="relative">
                 <FiUser
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
@@ -162,16 +160,19 @@ export default function LoginPage() {
                 />
               </div>
 
+              {/* Hint */}
               {identifier.length > 0 && (
-                <p className="text-xs text-gray-400 -mt-2 ml-1">
-                  {isPhone
-                    ? `📱 Mobile: +91 ${identifier}`
-                    : isEmail
-                      ? `📧 Email: ${identifier}`
-                      : "⚠️ Valid email અથવા 10-digit phone નાખો"}
-                </p>
+                <div
+                  className={`text-xs ml-1 flex items-center gap-1
+                  ${isValid ? "text-green-600" : "text-amber-500"}`}
+                >
+                  {isPhone && "📱 SMS OTP will be sent to +91 " + identifier}
+                  {isEmail && "📧 Email OTP will be sent to " + identifier}
+                  {!isValid && "⚠️ Valid email અથવા 10-digit phone નાખો"}
+                </div>
               )}
 
+              {/* Terms */}
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -187,19 +188,38 @@ export default function LoginPage() {
                   &amp;{" "}
                   <span className="text-primary font-semibold">
                     Privacy Policy
-                  </span>
+                  </span>{" "}
+                  and I am above 18 years old.
                 </span>
               </label>
 
+              {/* Send OTP Button */}
               <button
                 type="submit"
+                disabled={loading || !isValid}
                 className="w-full py-4 bg-primary text-white rounded-2xl font-bold
                            text-sm tracking-widest uppercase hover:bg-primary-dark
-                           transition-all shadow-lg shadow-primary/30"
+                           transition-all shadow-lg shadow-primary/30
+                           disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                CONTINUE
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div
+                      className="w-4 h-4 border-2 border-white border-t-transparent
+                                    rounded-full animate-spin"
+                    />
+                    Sending OTP...
+                  </span>
+                ) : isPhone ? (
+                  "📱 Send OTP via SMS"
+                ) : isEmail ? (
+                  "📧 Send OTP via Email"
+                ) : (
+                  "Send OTP"
+                )}
               </button>
 
+              {/* Divider */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-gray-200" />
                 <span className="text-xs text-gray-400">OR</span>
@@ -217,7 +237,10 @@ export default function LoginPage() {
                            text-gray-700 disabled:opacity-60"
               >
                 {gLoading ? (
-                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <div
+                    className="w-5 h-5 border-2 border-primary border-t-transparent
+                                    rounded-full animate-spin"
+                  />
                 ) : (
                   <FcGoogle size={22} />
                 )}
@@ -226,18 +249,18 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* ── Step 2 — Password or OTP ── */}
+          {/* ── Step 2 — Enter OTP ── */}
           {step === 2 && (
-            <div className="space-y-4">
+            <form onSubmit={handleVerifyOTP} className="space-y-5">
               {/* Back + Identifier */}
               <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <button
+                    type="button"
                     onClick={() => {
                       setStep(1);
-                      setOtpSent(false);
                       setOtp("");
-                      setPassword("");
+                      setOtpSent(false);
                     }}
                     className="text-gray-400 hover:text-primary transition-colors"
                   >
@@ -245,7 +268,9 @@ export default function LoginPage() {
                   </button>
                   <div>
                     <p className="text-xs text-gray-400">
-                      {isPhone ? "📱 Mobile" : "📧 Email"}
+                      {isPhone
+                        ? "📱 OTP sent via SMS"
+                        : "📧 OTP sent via Email"}
                     </p>
                     <p className="text-sm font-semibold text-gray-700">
                       {isPhone ? `+91 ${identifier}` : identifier}
@@ -253,9 +278,10 @@ export default function LoginPage() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => {
                     setStep(1);
-                    setOtpSent(false);
+                    setOtp("");
                   }}
                   className="text-primary text-xs font-semibold hover:underline"
                 >
@@ -263,155 +289,107 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              {/* Mode Toggle — Password or OTP */}
-              <div className="flex bg-gray-100 rounded-2xl p-1">
-                <button
-                  onClick={() => setLoginMode("password")}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all
-                    ${loginMode === "password" ? "bg-white shadow text-primary" : "text-gray-500"}`}
-                >
-                  🔑 Password
-                </button>
-                <button
-                  onClick={() => {
-                    setLoginMode("otp");
-                    if (!otpSent) handleSendOTP();
-                  }}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all
-                    ${loginMode === "otp" ? "bg-white shadow text-primary" : "text-gray-500"}`}
-                >
-                  📨 OTP
-                </button>
+              {/* OTP Sent Info */}
+              <div className="p-4 bg-green-50 border border-green-200 rounded-2xl text-center">
+                <p className="text-2xl mb-1">{isPhone ? "📱" : "📧"}</p>
+                <p className="text-sm font-semibold text-green-700">
+                  OTP Sent Successfully!
+                </p>
+                <p className="text-xs text-green-600 mt-1">
+                  {isPhone
+                    ? `Check SMS on +91 ${identifier}`
+                    : `Check email inbox of ${identifier}`}
+                </p>
               </div>
 
-              {/* ── Password Mode ── */}
-              {loginMode === "password" && (
-                <form onSubmit={handlePasswordLogin} className="space-y-4">
-                  <div>
-                    <div className="relative">
-                      <FiLock
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                        size={16}
-                      />
-                      <input
-                        type={showPwd ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Password નાખો"
-                        className="input-field pl-11 pr-12 py-4 rounded-2xl"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPwd(!showPwd)}
-                        className="absolute right-4 top-4 text-gray-400"
-                      >
-                        {showPwd ? <FiEyeOff size={18} /> : <FiEye size={18} />}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1 ml-1">
-                      Format: Name@123
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-4 bg-primary text-white rounded-2xl font-bold
-                               text-sm uppercase hover:bg-primary-dark transition-all
-                               shadow-lg shadow-primary/30"
-                  >
-                    {loading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Logging in...
-                      </span>
-                    ) : (
-                      "LOGIN"
-                    )}
-                  </button>
-                </form>
+              {/* Dev OTP hint */}
+              {devOtp && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-xs text-amber-700 font-semibold">
+                    🔧 Dev Mode OTP:{" "}
+                    <span className="text-lg font-bold tracking-widest">
+                      {devOtp}
+                    </span>
+                  </p>
+                </div>
               )}
 
-              {/* ── OTP Mode ── */}
-              {loginMode === "otp" && (
-                <form onSubmit={handleVerifyOTP} className="space-y-4">
-                  {/* OTP Info */}
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
-                    <p className="text-xs text-green-700 font-semibold">
-                      📨 OTP sent to{" "}
-                      {isPhone ? `+91 ${identifier}` : identifier}
-                    </p>
-                    <p className="text-xs text-green-600 mt-0.5">
-                      Valid for 5 minutes only
-                    </p>
-                  </div>
+              {/* OTP Input */}
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-2 block text-center">
+                  Enter 6-digit OTP
+                </label>
+                <input
+                  type="tel"
+                  value={otp}
+                  onChange={(e) =>
+                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  placeholder="• • • • • •"
+                  maxLength={6}
+                  className="input-field py-5 text-center text-3xl font-bold
+                             tracking-[0.8em] rounded-2xl"
+                  required
+                  autoFocus
+                />
+                {otp.length > 0 && otp.length < 6 && (
+                  <p className="text-xs text-amber-500 text-center mt-1">
+                    {6 - otp.length} digits remaining
+                  </p>
+                )}
+              </div>
 
-                  {/* OTP Input — 6 boxes */}
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-2 block">
-                      Enter 6-digit OTP
-                    </label>
-                    <input
-                      type="tel"
-                      value={otp}
-                      onChange={(e) =>
-                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                      }
-                      placeholder="• • • • • •"
-                      maxLength={6}
-                      className="input-field py-4 text-center text-2xl font-bold
-                                 tracking-[0.5em] rounded-2xl"
-                      required
+              {/* Verify Button */}
+              <button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="w-full py-4 bg-primary text-white rounded-2xl font-bold
+                           text-sm uppercase hover:bg-primary-dark transition-all
+                           shadow-lg shadow-primary/30 disabled:opacity-60"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div
+                      className="w-4 h-4 border-2 border-white border-t-transparent
+                                    rounded-full animate-spin"
                     />
-                  </div>
+                    Verifying...
+                  </span>
+                ) : (
+                  "✅ VERIFY OTP & LOGIN"
+                )}
+              </button>
 
+              {/* Resend */}
+              <div className="text-center">
+                {resendTimer > 0 ? (
+                  <p className="text-xs text-gray-400">
+                    Resend OTP in{" "}
+                    <span className="font-bold text-primary text-sm">
+                      {resendTimer}s
+                    </span>
+                  </p>
+                ) : (
                   <button
-                    type="submit"
-                    disabled={loading || otp.length !== 6}
-                    className="w-full py-4 bg-primary text-white rounded-2xl font-bold
-                               text-sm uppercase hover:bg-primary-dark transition-all
-                               shadow-lg shadow-primary/30 disabled:opacity-60"
+                    type="button"
+                    onClick={handleResend}
+                    disabled={loading}
+                    className="text-sm text-primary font-semibold hover:underline
+                               disabled:opacity-60"
                   >
-                    {loading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Verifying...
-                      </span>
-                    ) : (
-                      "VERIFY OTP"
-                    )}
+                    🔄 Resend OTP
                   </button>
+                )}
+              </div>
 
-                  {/* Resend */}
-                  <div className="text-center">
-                    {resendTimer > 0 ? (
-                      <p className="text-xs text-gray-400">
-                        Resend OTP in{" "}
-                        <span className="font-bold text-primary">
-                          {resendTimer}s
-                        </span>
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleSendOTP}
-                        className="text-xs text-primary font-semibold hover:underline"
-                      >
-                        Resend OTP
-                      </button>
-                    )}
-                  </div>
-                </form>
-              )}
-
-              {/* Google on Step 2 */}
+              {/* Divider */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-gray-200" />
                 <span className="text-xs text-gray-400">OR</span>
                 <div className="flex-1 h-px bg-gray-200" />
               </div>
 
+              {/* Google */}
               <button
                 type="button"
                 onClick={handleGoogleLogin}
@@ -423,7 +401,7 @@ export default function LoginPage() {
                 <FcGoogle size={20} />
                 Continue with Google
               </button>
-            </div>
+            </form>
           )}
 
           <p className="text-center text-sm text-gray-500 mt-5">
