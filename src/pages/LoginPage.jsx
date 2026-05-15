@@ -1,11 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { googleLogin, sendOTP, verifyOTP } from "../redux/slices/authSlice";
-import { FiUser, FiArrowLeft } from "react-icons/fi";
+import {
+  login,
+  googleLogin,
+  sendOTP,
+  verifyOTP,
+} from "../redux/slices/authSlice";
+import { FiUser, FiArrowLeft, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
 import toast from "react-hot-toast";
-import { auth, provider, signInWithPopup } from "../services/firebase";
+import {
+  auth,
+  provider,
+  signInWithPopup,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+} from "../services/firebase";
 
 export default function LoginPage() {
   const dispatch = useDispatch();
@@ -14,27 +25,29 @@ export default function LoginPage() {
   const { user, loading } = useSelector((s) => s.auth);
 
   const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const [otp, setOtp] = useState("");
   const [agreed, setAgreed] = useState(true);
   const [gLoading, setGLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
-  const [devOtp, setDevOtp] = useState("");
+  const [smsLoading, setSmsLoading] = useState(false);
   const [step, setStep] = useState(1);
+  const [loginMode, setLoginMode] = useState("password"); // 'password' | 'otp'
+  const [resendTimer, setResendTimer] = useState(0);
+  const [confirmResult, setConfirmResult] = useState(null);
+  const [devOtp, setDevOtp] = useState("");
 
+  const recaptchaWidget = useRef(null);
   const redirect = searchParams.get("redirect") || "/";
 
-  const isPhone = /^[0-9]{10}$/.test(identifier);
-  const isEmail = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(
-    identifier,
-  );
+  const isPhone = /^[0-9]{10}$/.test(identifier.trim());
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
   const isValid = isPhone || isEmail;
 
   useEffect(() => {
     if (user) navigate(redirect, { replace: true });
   }, [user]);
 
-  // Resend Timer
   useEffect(() => {
     if (resendTimer > 0) {
       const t = setTimeout(() => setResendTimer((p) => p - 1), 1000);
@@ -42,47 +55,138 @@ export default function LoginPage() {
     }
   }, [resendTimer]);
 
-  // Step 1 — Send OTP
-  const handleSendOTP = async (e) => {
-    e?.preventDefault();
+  // Setup Recaptcha
+  const setupRecaptcha = () => {
+    if (!recaptchaWidget.current) {
+      recaptchaWidget.current = new RecaptchaVerifier(
+        auth,
+        "recaptcha-container",
+        { size: "invisible", callback: () => {} },
+      );
+    }
+    return recaptchaWidget.current;
+  };
+
+  // Step 1 — Continue
+  const handleContinue = (e) => {
+    e.preventDefault();
     if (!isValid) return toast.error("Valid email અથવા 10-digit phone નાખો");
     if (!agreed) return toast.error("Please agree to Terms of Use");
+    setStep(2);
+    setLoginMode("password");
+  };
 
-    try {
-      const result = await dispatch(sendOTP({ identifier })).unwrap();
-      setOtpSent(true);
-      setStep(2);
-      setResendTimer(30);
-      // Dev mode OTP show
-      if (result.devOtp) {
-        setDevOtp(result.devOtp);
-        toast.success(`Dev OTP: ${result.devOtp}`, { duration: 10000 });
+  // Password Login
+  const handlePasswordLogin = (e) => {
+    e.preventDefault();
+    if (!password) return toast.error("Password નાખો");
+    const loginEmail = isPhone
+      ? `${identifier.trim()}@harshiddhi.com`
+      : identifier.trim();
+    dispatch(login({ email: loginEmail, password }));
+  };
+
+  // Send OTP
+  const handleSendOTP = async () => {
+    setLoginMode("otp");
+    setOtp("");
+    setDevOtp("");
+
+    if (isPhone) {
+      setSmsLoading(true);
+      try {
+        const recaptcha = setupRecaptcha();
+        const result = await signInWithPhoneNumber(
+          auth,
+          `+91${identifier.trim()}`,
+          recaptcha,
+        );
+        setConfirmResult(result);
+        setResendTimer(30);
+        toast.success(`OTP sent to +91 ${identifier} 📱`);
+      } catch (err) {
+        console.error("Phone OTP error:", err);
+        if (err.code === "auth/too-many-requests") {
+          toast.error("Too many attempts. Try later.");
+        } else {
+          toast.error("SMS send failed. Try again.");
+        }
+        if (recaptchaWidget.current) {
+          recaptchaWidget.current.clear();
+          recaptchaWidget.current = null;
+        }
+        setLoginMode("password");
+      } finally {
+        setSmsLoading(false);
       }
-    } catch (_) {}
+    } else {
+      try {
+        const result = await dispatch(
+          sendOTP({ identifier: identifier.trim() }),
+        ).unwrap();
+        setResendTimer(30);
+        if (result.devOtp) {
+          setDevOtp(result.devOtp);
+          toast.success(`Dev OTP: ${result.devOtp}`, { duration: 10000 });
+        }
+      } catch (_) {
+        setLoginMode("password");
+      }
+    }
+  };
+
+  // Verify OTP
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault();
+    if (otp.length !== 6) return toast.error("6-digit OTP નાખો");
+
+    if (isPhone && confirmResult) {
+      setSmsLoading(true);
+      try {
+        const result = await confirmResult.confirm(otp);
+        const fbUser = result.user;
+        await dispatch(
+          googleLogin({
+            name: fbUser.displayName || `User${identifier.slice(-4)}`,
+            email: `${identifier.trim()}@harshiddhi.com`,
+            googleId: fbUser.uid,
+            avatar: fbUser.photoURL || "",
+          }),
+        ).unwrap();
+        navigate(redirect, { replace: true });
+      } catch (err) {
+        if (err.code === "auth/invalid-verification-code") {
+          toast.error("Invalid OTP");
+        } else if (err.code === "auth/code-expired") {
+          toast.error("OTP expired. Resend karo.");
+        } else {
+          toast.error("Verification failed");
+        }
+      } finally {
+        setSmsLoading(false);
+      }
+    } else {
+      try {
+        await dispatch(
+          verifyOTP({
+            identifier: identifier.trim(),
+            otp,
+          }),
+        ).unwrap();
+        navigate(redirect, { replace: true });
+      } catch (_) {}
+    }
   };
 
   // Resend OTP
   const handleResend = async () => {
     setOtp("");
     setDevOtp("");
-    try {
-      const result = await dispatch(sendOTP({ identifier })).unwrap();
-      setResendTimer(30);
-      if (result.devOtp) {
-        setDevOtp(result.devOtp);
-        toast.success(`Dev OTP: ${result.devOtp}`, { duration: 10000 });
-      }
-    } catch (_) {}
-  };
-
-  // Step 2 — Verify OTP
-  const handleVerifyOTP = async (e) => {
-    e.preventDefault();
-    if (otp.length !== 6) return toast.error("6-digit OTP નાખો");
-    try {
-      await dispatch(verifyOTP({ identifier, otp })).unwrap();
-      navigate(redirect, { replace: true });
-    } catch (_) {}
+    if (isPhone && recaptchaWidget.current) {
+      recaptchaWidget.current.clear();
+      recaptchaWidget.current = null;
+    }
+    await handleSendOTP();
   };
 
   // Google Login
@@ -117,6 +221,9 @@ export default function LoginPage() {
         background: "linear-gradient(135deg, #fff8f0 0%, #fce4ec 100%)",
       }}
     >
+      {/* Invisible Recaptcha */}
+      <div id="recaptcha-container" />
+
       <div className="w-full max-w-md">
         {/* Promo Banner */}
         <div className="bg-gradient-to-r from-primary to-pink-400 rounded-2xl p-4 mb-6 text-white">
@@ -141,10 +248,9 @@ export default function LoginPage() {
             Welcome to Harshiddhi Saari & Dresses 🌸
           </p>
 
-          {/* ── Step 1 — Enter Email or Phone ── */}
+          {/* ── Step 1 ── */}
           {step === 1 && (
-            <form onSubmit={handleSendOTP} className="space-y-4">
-              {/* Input */}
+            <form onSubmit={handleContinue} className="space-y-4">
               <div className="relative">
                 <FiUser
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
@@ -160,19 +266,16 @@ export default function LoginPage() {
                 />
               </div>
 
-              {/* Hint */}
               {identifier.length > 0 && (
-                <div
-                  className={`text-xs ml-1 flex items-center gap-1
-                  ${isValid ? "text-green-600" : "text-amber-500"}`}
+                <p
+                  className={`text-xs ml-1 ${isValid ? "text-green-600" : "text-amber-500"}`}
                 >
-                  {isPhone && "📱 SMS OTP will be sent to +91 " + identifier}
-                  {isEmail && "📧 Email OTP will be sent to " + identifier}
+                  {isPhone && `📱 +91 ${identifier}`}
+                  {isEmail && `📧 ${identifier}`}
                   {!isValid && "⚠️ Valid email અથવા 10-digit phone નાખો"}
-                </div>
+                </p>
               )}
 
-              {/* Terms */}
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -188,45 +291,27 @@ export default function LoginPage() {
                   &amp;{" "}
                   <span className="text-primary font-semibold">
                     Privacy Policy
-                  </span>{" "}
-                  and I am above 18 years old.
+                  </span>
                 </span>
               </label>
 
-              {/* Send OTP Button */}
               <button
                 type="submit"
-                disabled={loading || !isValid}
+                disabled={!isValid}
                 className="w-full py-4 bg-primary text-white rounded-2xl font-bold
                            text-sm tracking-widest uppercase hover:bg-primary-dark
                            transition-all shadow-lg shadow-primary/30
-                           disabled:opacity-60 disabled:cursor-not-allowed"
+                           disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div
-                      className="w-4 h-4 border-2 border-white border-t-transparent
-                                    rounded-full animate-spin"
-                    />
-                    Sending OTP...
-                  </span>
-                ) : isPhone ? (
-                  "📱 Send OTP via SMS"
-                ) : isEmail ? (
-                  "📧 Send OTP via Email"
-                ) : (
-                  "Send OTP"
-                )}
+                CONTINUE
               </button>
 
-              {/* Divider */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-gray-200" />
                 <span className="text-xs text-gray-400">OR</span>
                 <div className="flex-1 h-px bg-gray-200" />
               </div>
 
-              {/* Google */}
               <button
                 type="button"
                 onClick={handleGoogleLogin}
@@ -237,10 +322,7 @@ export default function LoginPage() {
                            text-gray-700 disabled:opacity-60"
               >
                 {gLoading ? (
-                  <div
-                    className="w-5 h-5 border-2 border-primary border-t-transparent
-                                    rounded-full animate-spin"
-                  />
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <FcGoogle size={22} />
                 )}
@@ -249,18 +331,19 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* ── Step 2 — Enter OTP ── */}
+          {/* ── Step 2 ── */}
           {step === 2 && (
-            <form onSubmit={handleVerifyOTP} className="space-y-5">
+            <div className="space-y-4">
               {/* Back + Identifier */}
               <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
                 <div className="flex items-center gap-3">
                   <button
-                    type="button"
                     onClick={() => {
                       setStep(1);
                       setOtp("");
-                      setOtpSent(false);
+                      setPassword("");
+                      setConfirmResult(null);
+                      setLoginMode("password");
                     }}
                     className="text-gray-400 hover:text-primary transition-colors"
                   >
@@ -268,9 +351,7 @@ export default function LoginPage() {
                   </button>
                   <div>
                     <p className="text-xs text-gray-400">
-                      {isPhone
-                        ? "📱 OTP sent via SMS"
-                        : "📧 OTP sent via Email"}
+                      {isPhone ? "📱 Mobile" : "📧 Email"}
                     </p>
                     <p className="text-sm font-semibold text-gray-700">
                       {isPhone ? `+91 ${identifier}` : identifier}
@@ -278,10 +359,9 @@ export default function LoginPage() {
                   </div>
                 </div>
                 <button
-                  type="button"
                   onClick={() => {
                     setStep(1);
-                    setOtp("");
+                    setLoginMode("password");
                   }}
                   className="text-primary text-xs font-semibold hover:underline"
                 >
@@ -289,107 +369,201 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              {/* OTP Sent Info */}
-              <div className="p-4 bg-green-50 border border-green-200 rounded-2xl text-center">
-                <p className="text-2xl mb-1">{isPhone ? "📱" : "📧"}</p>
-                <p className="text-sm font-semibold text-green-700">
-                  OTP Sent Successfully!
-                </p>
-                <p className="text-xs text-green-600 mt-1">
-                  {isPhone
-                    ? `Check SMS on +91 ${identifier}`
-                    : `Check email inbox of ${identifier}`}
-                </p>
-              </div>
-
-              {/* Dev OTP hint */}
-              {devOtp && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                  <p className="text-xs text-amber-700 font-semibold">
-                    🔧 Dev Mode OTP:{" "}
-                    <span className="text-lg font-bold tracking-widest">
-                      {devOtp}
-                    </span>
-                  </p>
-                </div>
-              )}
-
-              {/* OTP Input */}
-              <div>
-                <label className="text-sm font-semibold text-gray-700 mb-2 block text-center">
-                  Enter 6-digit OTP
-                </label>
-                <input
-                  type="tel"
-                  value={otp}
-                  onChange={(e) =>
-                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  placeholder="• • • • • •"
-                  maxLength={6}
-                  className="input-field py-5 text-center text-3xl font-bold
-                             tracking-[0.8em] rounded-2xl"
-                  required
-                  autoFocus
-                />
-                {otp.length > 0 && otp.length < 6 && (
-                  <p className="text-xs text-amber-500 text-center mt-1">
-                    {6 - otp.length} digits remaining
-                  </p>
-                )}
-              </div>
-
-              {/* Verify Button */}
-              <button
-                type="submit"
-                disabled={loading || otp.length !== 6}
-                className="w-full py-4 bg-primary text-white rounded-2xl font-bold
-                           text-sm uppercase hover:bg-primary-dark transition-all
-                           shadow-lg shadow-primary/30 disabled:opacity-60"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
+              {/* ── Mode Toggle: Password / OTP ── */}
+              <div className="flex bg-gray-100 rounded-2xl p-1">
+                <button
+                  onClick={() => setLoginMode("password")}
+                  className={`flex-1 flex items-center justify-center gap-2
+                              py-3 rounded-xl text-sm font-semibold transition-all
+                    ${
+                      loginMode === "password"
+                        ? "bg-white shadow-md text-primary"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                  🔑 Password
+                </button>
+                <button
+                  onClick={handleSendOTP}
+                  disabled={smsLoading || loading}
+                  className={`flex-1 flex items-center justify-center gap-2
+                              py-3 rounded-xl text-sm font-semibold transition-all
+                              disabled:opacity-60
+                    ${
+                      loginMode === "otp"
+                        ? "bg-white shadow-md text-primary"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                  {smsLoading ? (
                     <div
-                      className="w-4 h-4 border-2 border-white border-t-transparent
+                      className="w-4 h-4 border-2 border-primary border-t-transparent
                                     rounded-full animate-spin"
                     />
-                    Verifying...
-                  </span>
-                ) : (
-                  "✅ VERIFY OTP & LOGIN"
-                )}
-              </button>
-
-              {/* Resend */}
-              <div className="text-center">
-                {resendTimer > 0 ? (
-                  <p className="text-xs text-gray-400">
-                    Resend OTP in{" "}
-                    <span className="font-bold text-primary text-sm">
-                      {resendTimer}s
-                    </span>
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    disabled={loading}
-                    className="text-sm text-primary font-semibold hover:underline
-                               disabled:opacity-60"
-                  >
-                    🔄 Resend OTP
-                  </button>
-                )}
+                  ) : (
+                    "📨"
+                  )}
+                  OTP
+                </button>
               </div>
 
-              {/* Divider */}
+              {/* ── Password Mode ── */}
+              {loginMode === "password" && (
+                <form onSubmit={handlePasswordLogin} className="space-y-4">
+                  <div>
+                    <div className="relative">
+                      <FiLock
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                        size={16}
+                      />
+                      <input
+                        type={showPwd ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Password નાખો"
+                        className="input-field pl-11 pr-12 py-4 rounded-2xl"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPwd(!showPwd)}
+                        className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPwd ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1.5 ml-1">
+                      Format: Name@123
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-4 bg-primary text-white rounded-2xl font-bold
+                               text-sm uppercase hover:bg-primary-dark transition-all
+                               shadow-lg shadow-primary/30 disabled:opacity-60"
+                  >
+                    {loading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div
+                          className="w-4 h-4 border-2 border-white border-t-transparent
+                                        rounded-full animate-spin"
+                        />
+                        Logging in...
+                      </span>
+                    ) : (
+                      "🔑 LOGIN WITH PASSWORD"
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {/* ── OTP Mode ── */}
+              {loginMode === "otp" && (
+                <form onSubmit={handleVerifyOTP} className="space-y-4">
+                  {/* OTP Sent Info */}
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-2xl text-center">
+                    <p className="text-2xl mb-1">{isPhone ? "📱" : "📧"}</p>
+                    <p className="text-sm font-semibold text-green-700">
+                      OTP Sent!
+                    </p>
+                    <p className="text-xs text-green-600 mt-1">
+                      {isPhone
+                        ? `Check SMS on +91 ${identifier}`
+                        : `Check email: ${identifier}`}
+                    </p>
+                  </div>
+
+                  {/* Dev OTP */}
+                  {devOtp && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                      <p className="text-xs text-amber-700 font-semibold">
+                        🔧 Dev OTP:{" "}
+                        <span className="text-xl font-bold tracking-widest">
+                          {devOtp}
+                        </span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* OTP Input */}
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 mb-2 block text-center">
+                      Enter 6-digit OTP
+                    </label>
+                    <input
+                      type="tel"
+                      value={otp}
+                      onChange={(e) =>
+                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                      placeholder="• • • • • •"
+                      maxLength={6}
+                      className="input-field py-5 text-center text-3xl font-bold
+                                 tracking-[0.8em] rounded-2xl"
+                      required
+                      autoFocus
+                    />
+                    {otp.length > 0 && otp.length < 6 && (
+                      <p className="text-xs text-amber-500 text-center mt-1">
+                        {6 - otp.length} digits remaining
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Verify Button */}
+                  <button
+                    type="submit"
+                    disabled={loading || smsLoading || otp.length !== 6}
+                    className="w-full py-4 bg-primary text-white rounded-2xl font-bold
+                               text-sm uppercase hover:bg-primary-dark transition-all
+                               shadow-lg shadow-primary/30 disabled:opacity-60"
+                  >
+                    {loading || smsLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div
+                          className="w-4 h-4 border-2 border-white border-t-transparent
+                                        rounded-full animate-spin"
+                        />
+                        Verifying...
+                      </span>
+                    ) : (
+                      "✅ VERIFY OTP & LOGIN"
+                    )}
+                  </button>
+
+                  {/* Resend */}
+                  <div className="text-center">
+                    {resendTimer > 0 ? (
+                      <p className="text-xs text-gray-400">
+                        Resend in{" "}
+                        <span className="font-bold text-primary">
+                          {resendTimer}s
+                        </span>
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        disabled={smsLoading || loading}
+                        className="text-sm text-primary font-semibold hover:underline
+                                   disabled:opacity-60"
+                      >
+                        🔄 Resend OTP
+                      </button>
+                    )}
+                  </div>
+                </form>
+              )}
+
+              {/* Google */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-gray-200" />
                 <span className="text-xs text-gray-400">OR</span>
                 <div className="flex-1 h-px bg-gray-200" />
               </div>
 
-              {/* Google */}
               <button
                 type="button"
                 onClick={handleGoogleLogin}
@@ -401,7 +575,7 @@ export default function LoginPage() {
                 <FcGoogle size={20} />
                 Continue with Google
               </button>
-            </form>
+            </div>
           )}
 
           <p className="text-center text-sm text-gray-500 mt-5">
